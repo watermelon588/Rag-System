@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+myenv/
+venv/
+env/
+.venv/
+
+# Environment variables (never commit secrets)
+.env
+
+# Runtime data: uploads, documents, vector indexes, SQLite DB
+storage/
+
+# Model cache
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
