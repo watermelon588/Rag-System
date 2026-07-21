@@ -49,10 +49,22 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 14
+    # Auth cookies: tokens are delivered as httpOnly cookies (see security).
+    cookie_secure: bool = False          # set True in production (HTTPS only)
+    cookie_samesite: str = "lax"         # lax | strict | none
+    cookie_domain: str = ""              # blank = host-only cookie
+    access_cookie_name: str = "mmr_access"
+    refresh_cookie_name: str = "mmr_refresh"
 
     # -------------------------------------------------------------- storage
     storage_dir: Path = BACKEND_DIR / "storage"
-    database_url: str = f"sqlite:///{(BACKEND_DIR / 'storage' / 'app.db').as_posix()}"
+
+    # ----------------------------------------------------------- database (MongoDB)
+    # Point this at your MongoDB Atlas SRV connection string, e.g.
+    #   mongodb+srv://<user>:<pass>@cluster0.xxxx.mongodb.net/?retryWrites=true&w=majority
+    mongodb_uri: str = "mongodb://localhost:27017"
+    mongodb_db_name: str = "multimodal_ai"
+    mongodb_timeout_ms: int = 8000
 
     # ------------------------------------------------------ search providers
     serper_api_key: str = ""
@@ -65,9 +77,22 @@ class Settings(BaseSettings):
     clip_model: str = "ViT-B/32"
     whisper_model: str = "base"
     caption_model: str = "Salesforce/blip-image-captioning-base"
-    llm_model: str = "Qwen/Qwen2.5-1.5B-Instruct"
+    # ---------------------------------------------------------- text generation
+    # Generation provider selection (see app.ml.generation): if GROQ_API_KEY is
+    # set the platform uses Groq's fast hosted models; otherwise it falls back
+    # to a local model, then to extractive (no-LLM) answers.
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.1-8b-instant"   # very fast on Groq's LPUs
+    groq_timeout_seconds: int = 30
+    # Smaller default local model => noticeably faster CPU inference than 1.5B.
+    llm_model: str = "Qwen/Qwen2.5-0.5B-Instruct"
     enable_local_llm: bool = True
+    llm_max_new_tokens: int = 320               # cap generation length for speed
     enable_query_expansion: bool = True
+    # Only invoke the LLM query rewriter when the cleaned query has at least
+    # this many significant words. Short keyword queries ("frog") are already
+    # good search input, so we skip the (slow, on-CPU) rewrite entirely.
+    query_refine_min_words: int = 6
 
     # ------------------------------------------------------------------ rag
     chunk_size: int = 800               # characters per chunk

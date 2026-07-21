@@ -25,13 +25,13 @@ export default function Navbar() {
                 left: 0,
                 right: 0,
                 zIndex: 50,
-                height: '64px',
+                height: 'var(--nav-height)',
                 display: 'flex',
                 alignItems: 'center',
-                background: 'rgba(10, 10, 18, 0.55)',
+                background: 'rgba(6, 7, 10, 0.55)',
                 backdropFilter: 'blur(20px)',
                 WebkitBackdropFilter: 'blur(20px)',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                borderBottom: '1px solid var(--border)',
             }}
         >
             <div style={{
@@ -91,7 +91,8 @@ export default function Navbar() {
                                         right: '0',
                                         height: '2px',
                                         borderRadius: '999px',
-                                        background: '#ffffff',
+                                        background: 'var(--accent)',
+                                        boxShadow: '0 0 8px var(--accent-glow)',
                                     }} />
                                 )}
                             </Link>
@@ -133,12 +134,13 @@ export default function Navbar() {
                             fontSize: '13px',
                             fontWeight: 600,
                             padding: '7px 18px',
-                            borderRadius: '999px',
-                            border: 'none',
+                            borderRadius: 'var(--radius-pill)',
+                            border: '1px solid var(--accent-border)',
                             cursor: 'pointer',
                             letterSpacing: '0.01em',
-                            background: '#ffffff',
-                            color: '#000000',
+                            background: 'var(--accent-soft)',
+                            color: 'var(--accent-text)',
+                            boxShadow: '0 0 0 1px rgba(var(--accent-rgb),0.05), 0 4px 16px rgba(var(--accent-rgb),0.10)',
                         }}
                     >
                         Sign in

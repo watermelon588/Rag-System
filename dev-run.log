@@ -1,0 +1,38 @@
+
+> multimodal-ai-retrieval-platform@1.0.0 dev
+> concurrently --names "backend,frontend" --prefix-colors "blue,green" --kill-others-on-fail "npm run dev:backend" "npm run dev:frontend"
+
+[frontend] 
+[frontend] > multimodal-ai-retrieval-platform@1.0.0 dev:frontend
+[frontend] > npm --prefix frontend run dev
+[frontend] 
+[backend] 
+[backend] > multimodal-ai-retrieval-platform@1.0.0 dev:backend
+[backend] > cd backend && .venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
+[backend] 
+[backend] INFO:     Will watch for changes in these directories: ['C:\\Users\\Rohit Maity\\Desktop\\coding\\Webdev\\project\\Multi-Modal-Search-Engine-main\\backend']
+[backend] INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+[backend] INFO:     Started reloader process [22348] using WatchFiles
+[frontend] 
+[frontend] > frontend@0.0.0 dev
+[frontend] > vite
+[frontend] 
+[frontend] [2m8:28:02 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m Re-optimizing dependencies because vite config has changed
+[frontend] 
+[frontend]   [32m[1mVITE[22m v8.0.8[39m  [2mready in [0m[1m651[22m[2m[0m ms[22m
+[frontend] 
+[frontend]   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[frontend] [2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[backend] C:\Users\Rohit Maity\Desktop\coding\Webdev\project\Multi-Modal-Search-Engine-main\backend\app\core\exceptions.py:66: StarletteDeprecationWarning: 'HTTP_413_REQUEST_ENTITY_TOO_LARGE' is deprecated. Use 'HTTP_413_CONTENT_TOO_LARGE' instead.
+[backend]   class PayloadTooLargeError(AppError):
+[backend] C:\Users\Rohit Maity\Desktop\coding\Webdev\project\Multi-Modal-Search-Engine-main\backend\app\core\exceptions.py:88: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+[backend]   class DocumentProcessingError(AppError):
+[backend] INFO:     Started server process [26656]
+[backend] INFO:     Waiting for application startup.
+[backend] 2026-07-21 20:28:02,934 | INFO     | - | app.db.mongo | MongoDB indexes ensured on 'multimodal_ai'
+[backend] 2026-07-21 20:28:02,934 | INFO     | - | app.main | Connected to MongoDB database 'multimodal_ai'
+[backend] 2026-07-21 20:28:04,653 | INFO     | - | app.main | Multimodal AI Retrieval Platform v1.0.0 started (development)
+[backend] INFO:     Application startup complete.
+[frontend] npm run dev:frontend exited with code 1073807364
+--> Sending SIGTERM to other processes..
+[backend] npm run dev:backend exited with code 1073807364

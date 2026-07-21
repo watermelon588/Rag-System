@@ -11,9 +11,9 @@ from app.schemas.search import (
     SearchResultItem,
 )
 from app.services.search.ranking import (
-    DEGRADED_LEXICAL_WEIGHT,
+    DEGRADED_KEYWORD_WEIGHT,
     DEGRADED_POSITION_WEIGHT,
-    LEXICAL_WEIGHT,
+    KEYWORD_WEIGHT,
     POSITION_WEIGHT,
     SEMANTIC_WEIGHT,
     ScoredResult,
@@ -39,11 +39,12 @@ def _describe_semantic(score: float) -> str:
     return "Content shares limited meaning with the query"
 
 
-def _describe_lexical(score: float, matched: list[str]) -> str:
+def _describe_keyword(score: float, matched: list[str]) -> str:
     if not matched:
         return "No key query terms appear directly in this result"
     shown = ", ".join(matched[:5])
-    return f"Matches {len(matched)} key term(s): {shown}"
+    strength = "strong" if score >= 0.7 else "partial" if score >= 0.3 else "weak"
+    return f"{strength.capitalize()} keyword (BM25) match on: {shown}"
 
 
 def _describe_position(rank: int) -> str:
@@ -62,16 +63,16 @@ def build_analysis(item: ScoredResult) -> RelevanceAnalysis:
                 explanation=_describe_semantic(item.semantic_score),
             )
         )
-        lexical_weight, position_weight = LEXICAL_WEIGHT, POSITION_WEIGHT
+        keyword_weight, position_weight = KEYWORD_WEIGHT, POSITION_WEIGHT
     else:
-        lexical_weight, position_weight = DEGRADED_LEXICAL_WEIGHT, DEGRADED_POSITION_WEIGHT
+        keyword_weight, position_weight = DEGRADED_KEYWORD_WEIGHT, DEGRADED_POSITION_WEIGHT
 
     signals.append(
         RelevanceSignal(
-            name="keyword_overlap",
-            score=item.lexical_score,
-            weight=lexical_weight,
-            explanation=_describe_lexical(item.lexical_score, item.matched_terms),
+            name="bm25_keyword",
+            score=item.keyword_score,
+            weight=keyword_weight,
+            explanation=_describe_keyword(item.keyword_score, item.matched_terms),
         )
     )
     signals.append(

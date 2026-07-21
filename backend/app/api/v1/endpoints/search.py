@@ -37,6 +37,7 @@ async def search(
         Form(description="Comma-separated subset of: web,images,videos,news"),
     ] = None,
     limit: Annotated[int | None, Form(ge=1, le=20)] = None,
+    page: Annotated[int, Form(ge=1, le=20, description="1-based results page")] = 1,
 ) -> SearchResponse:
     selected: list[ResultCategory] | None = None
     if categories:
@@ -54,4 +55,5 @@ async def search(
         file=file,
         categories=selected,
         limit=limit or get_settings().search_default_limit,
+        page=page,
     )

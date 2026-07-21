@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app import __version__
 from app.core.config import get_settings
+from app.ml import generation
 from app.ml.registry import registry
 from app.services.providers import SerperProvider
 
@@ -29,9 +30,13 @@ def capabilities() -> dict:
         "version": __version__,
         "environment": settings.environment,
         "models": registry.status(),
-        "providers": {"serper": SerperProvider().is_configured()},
+        "providers": {
+            "serper": SerperProvider().is_configured(),
+            "generation": generation.provider_name(),
+        },
         "features": {
             "local_llm": settings.enable_local_llm,
+            "groq": generation.groq_available(),
             "query_expansion": settings.enable_query_expansion,
         },
     }

@@ -1,5 +1,77 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
+
+/* ============================================================================
+   DESIGN TOKENS — the single source of truth for the visual system.
+   Monochrome surfaces on pure black, with a single electric-blue accent.
+   See design.md for the full rationale and usage rules.
+   ========================================================================== */
+:root {
+  /* Base / background */
+  --bg: #000000;
+  --bg-elevated: #07080a;
+
+  /* Monochrome glass surfaces (translucent white on black) */
+  --surface-1: rgba(255, 255, 255, 0.035);
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --surface-3: rgba(255, 255, 255, 0.09);
+
+  /* Borders */
+  --border: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  /* Text ramp */
+  --text: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.70);
+  --text-muted: rgba(255, 255, 255, 0.45);
+  --text-faint: rgba(255, 255, 255, 0.28);
+
+  /* Accent — subtle electric blue (the ONLY hue in the system) */
+  --accent-rgb: 61, 139, 255;
+  --accent: rgb(var(--accent-rgb));
+  --accent-strong: #5b9dff;
+  --accent-soft: rgba(var(--accent-rgb), 0.12);
+  --accent-border: rgba(var(--accent-rgb), 0.32);
+  --accent-glow: rgba(var(--accent-rgb), 0.55);
+  --accent-text: rgba(var(--accent-rgb), 0.92);
+
+  /* Status hues (used sparingly, outside the monochrome rule) */
+  --success: #4ade80;
+  --warning: #facc15;
+  --danger: #f87171;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 30px;
+  --text-3xl: clamp(38px, 6vw, 72px);
+  --tracking-tight: -0.02em;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 0.15s;
+  --dur-base: 0.25s;
+
+  /* Elevation */
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.6);
+
+  /* Layout */
+  --nav-height: 64px;
+}
 
 *,
 *::before,
@@ -14,30 +86,47 @@ html {
 }
 
 body {
-  background-color: #000;
-  color: #fff;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
 }
 
-/* Applied by CustomCursor on mount */
-.cursor-none,
-.cursor-none * {
-  cursor: none !important;
+::selection {
+  background: rgba(var(--accent-rgb), 0.30);
+  color: #fff;
 }
 
-/* Heading glow — apply to the h1 wrapper */
+/* Custom scrollbar — monochrome */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); background-clip: content-box; }
+
+/* Applied by CustomCursor on mount (pointer devices only) */
+@media (pointer: fine) {
+  .cursor-none,
+  .cursor-none * {
+    cursor: none !important;
+  }
+}
+
+/* Heading glow — accent-tinted aura behind hero headings */
 .heading-glow {
   position: relative;
 }
-
 .heading-glow::before {
   content: '';
   position: absolute;
   inset: -40px -60px;
-  background: radial-gradient(ellipse at center, rgba(120, 100, 255, 0.15) 0%, transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(var(--accent-rgb), 0.18) 0%, transparent 70%);
   pointer-events: none;
   z-index: -1;
   border-radius: 50%;
@@ -46,11 +135,19 @@ body {
 /* Smooth transition defaults */
 a,
 button {
-  transition: color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+  transition: color var(--dur-base) ease, background-color var(--dur-base) ease,
+    opacity var(--dur-base) ease, box-shadow var(--dur-base) ease, border-color var(--dur-base) ease;
 }
 
-/* Spinner animation used by SearchBar loading state */
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -1,0 +1,9 @@
+{
+  // Stop the Python extension from auto-injecting the venv activation
+  // command into every new integrated terminal. You can still activate it
+  // manually with:  backend\.venv\Scripts\Activate.ps1
+  "python.terminal.activateEnvironment": false,
+  // Keep pointing VS Code (linting, "Run Python File", etc.) at the venv
+  // interpreter even though the terminal no longer auto-activates it.
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/Scripts/python.exe"
+}

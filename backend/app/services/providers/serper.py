@@ -80,16 +80,17 @@ class SerperProvider(SearchProvider):
     # ------------------------------------------------------------------ api
 
     def search(
-        self, query: str, categories: list[ResultCategory], limit: int
+        self, query: str, categories: list[ResultCategory], limit: int, page: int = 1
     ) -> dict[ResultCategory, list[ProviderResult]]:
         if not self.is_configured():
             raise ExternalServiceError(
                 "Web search provider is not configured (missing SERPER_API_KEY)"
             )
 
+        page = max(1, page)
         with ThreadPoolExecutor(max_workers=len(categories)) as pool:
             futures = {
-                category: pool.submit(self._fetch_category, query, category, limit)
+                category: pool.submit(self._fetch_category, query, category, limit, page)
                 for category in categories
             }
             results = {category: future.result() for category, future in futures.items()}

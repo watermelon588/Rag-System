@@ -13,12 +13,7 @@ const inputStyle = {
 
 export function AuthShell({ title, subtitle, children }) {
     return (
-        <div style={{ minHeight: '100vh', background: '#000', position: 'relative' }}>
-            <div style={{
-                position: 'fixed', inset: 0,
-                background: 'radial-gradient(ellipse at 50% 0%, rgba(76,29,149,0.22), transparent 60%)',
-                pointerEvents: 'none',
-            }} />
+        <div style={{ minHeight: '100vh', position: 'relative' }}>
             <Navbar />
             <div style={{
                 position: 'relative', zIndex: 10, minHeight: '100vh',
@@ -106,7 +101,7 @@ export default function Login() {
             </form>
             <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginTop: '20px', textAlign: 'center' }}>
                 No account?{' '}
-                <Link to="/register" style={{ color: 'rgba(129,140,248,0.9)', textDecoration: 'none' }}>
+                <Link to="/register" style={{ color: 'rgba(61,139,255,0.9)', textDecoration: 'none' }}>
                     Create one
                 </Link>
             </p>

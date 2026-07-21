@@ -91,3 +91,46 @@ def decode_token(token: str, expected_type: str = ACCESS_TOKEN) -> dict:
     if not payload.get("sub"):
         raise AuthenticationError("Malformed token")
     return payload
+
+
+# --------------------------------------------------------------- auth cookies
+
+def set_auth_cookies(response, tokens) -> None:
+    """Attach the access + refresh JWTs as httpOnly cookies.
+
+    httpOnly keeps them out of reach of page JavaScript (XSS-resistant);
+    SameSite mitigates CSRF; the access cookie is scoped to the API prefix
+    while the refresh cookie is scoped to the refresh endpoint only.
+    """
+    settings = get_settings()
+    common = {
+        "httponly": True,
+        "secure": settings.cookie_secure,
+        "samesite": settings.cookie_samesite,
+    }
+    if settings.cookie_domain:
+        common["domain"] = settings.cookie_domain
+
+    response.set_cookie(
+        settings.access_cookie_name,
+        tokens.access_token,
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+        **common,
+    )
+    response.set_cookie(
+        settings.refresh_cookie_name,
+        tokens.refresh_token,
+        max_age=settings.refresh_token_expire_days * 24 * 3600,
+        path=f"{settings.api_v1_prefix}/auth",
+        **common,
+    )
+
+
+def clear_auth_cookies(response) -> None:
+    settings = get_settings()
+    domain = settings.cookie_domain or None
+    response.delete_cookie(settings.access_cookie_name, path="/", domain=domain)
+    response.delete_cookie(
+        settings.refresh_cookie_name, path=f"{settings.api_v1_prefix}/auth", domain=domain
+    )

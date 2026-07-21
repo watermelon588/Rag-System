@@ -43,9 +43,10 @@ def list_sessions(user: CurrentUser, chat: ChatSvc) -> ChatSessionListResponse:
 @router.get("/sessions/{session_id}", response_model=ChatSessionDetail)
 def get_session(session_id: str, user: CurrentUser, chat: ChatSvc) -> ChatSessionDetail:
     session = chat.get_session(user.id, session_id)
+    messages = chat.list_messages(session.id)
     return ChatSessionDetail(
         **ChatSessionSummary.model_validate(session).model_dump(),
-        messages=[ChatMessageOut.model_validate(message) for message in session.messages],
+        messages=[ChatMessageOut.model_validate(message) for message in messages],
     )
 
 

@@ -182,11 +182,11 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
 
     /* ── border / glow styles ───────────────────────────────────── */
     const borderColor = dragging
-        ? 'rgba(167,139,250,0.65)'
+        ? 'rgba(61,139,255,0.65)'
         : focused ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.10)';
 
     const glowShadow = dragging
-        ? '0 0 0 2px rgba(167,139,250,0.35), 0 8px 32px rgba(0,0,0,0.45)'
+        ? '0 0 0 2px rgba(61,139,255,0.35), 0 8px 32px rgba(0,0,0,0.45)'
         : focused
             ? '0 0 0 1px rgba(255,255,255,0.12), 0 6px 28px rgba(0,0,0,0.40)'
             : '0 4px 20px rgba(0,0,0,0.30)';
@@ -207,6 +207,10 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                 onDrop={handleDrop}
                 style={{
                     position: 'relative',
+                    // Lift the whole search bar (and its downward-opening upload
+                    // menu) above the results content, which otherwise paints
+                    // over it as a later sibling in the same stacking context.
+                    zIndex: showMenu ? 40 : 20,
                     width: '100%',
                     maxWidth: compact ? '640px' : '720px',
 
@@ -263,7 +267,7 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                                     />
                                 ) : (
-                                    <i className={fileIconClass} style={{ fontSize: '20px', color: 'rgba(167,139,250,0.85)' }} />
+                                    <i className={fileIconClass} style={{ fontSize: '20px', color: 'rgba(61,139,255,0.85)' }} />
                                 )}
                             </div>
 
@@ -338,17 +342,19 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                             {showMenu && (
                                 <motion.div
                                     ref={menuRef}
-                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    initial={{ opacity: 0, y: -8, scale: 0.96 }}
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    exit={{ opacity: 0, y: -8, scale: 0.96 }}
                                     transition={{ duration: 0.15, ease: 'easeOut' }}
                                     style={{
                                         position: 'absolute',
-                                        // Position above the button cleanly
-                                        bottom: 'calc(100% + 14px)',
+                                        // Open DOWNWARD from the button so it is never
+                                        // clipped by (or hidden behind) the fixed navbar
+                                        // when the search bar sits near the top of the page.
+                                        top: 'calc(100% + 12px)',
                                         left: 0,
-                                        background: 'rgba(20,20,25,0.95)',
-                                        border: '1px solid rgba(255,255,255,0.12)',
+                                        background: 'rgba(14,15,18,0.96)',
+                                        border: '1px solid var(--border-strong)',
                                         borderRadius: '14px',
                                         padding: '8px',
                                         display: 'flex',
@@ -356,9 +362,9 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                                         gap: '2px',
                                         backdropFilter: 'blur(24px)',
                                         WebkitBackdropFilter: 'blur(24px)',
-                                        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
-                                        zIndex: 50,
-                                        minWidth: '180px'
+                                        boxShadow: 'var(--shadow-pop)',
+                                        zIndex: 1000,
+                                        minWidth: '190px'
                                     }}
                                 >
                                     {UPLOAD_TYPES.map(type => (
@@ -494,8 +500,8 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                         position: 'absolute',
                         inset: 0,
                         borderRadius: file ? '24px' : '999px',
-                        background: 'rgba(139,92,246,0.10)',
-                        border: '1.5px dashed rgba(167,139,250,0.55)',
+                        background: 'rgba(61,139,255,0.10)',
+                        border: '1.5px dashed rgba(61,139,255,0.55)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -503,7 +509,7 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                         zIndex: 10,
                         transition: 'border-radius 0.3s ease',
                     }}>
-                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(192,168,255,0.90)' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(145,185,255,0.90)' }}>
                             <i className="fa-solid fa-cloud-arrow-up" style={{ marginRight: '6px' }} />
                             Drop to attach
                         </span>

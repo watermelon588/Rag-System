@@ -54,7 +54,7 @@ function SectionHeader({ icon, title, count }) {
             marginBottom: '20px', paddingBottom: '14px',
             borderBottom: '1px solid rgba(255,255,255,0.07)',
         }}>
-            <span style={{ color: 'rgba(129,140,248,0.9)', fontSize: '18px' }}>{icon}</span>
+            <span style={{ color: 'rgba(61,139,255,0.9)', fontSize: '18px' }}>{icon}</span>
             <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>{title}</h2>
             {count > 0 && (
                 <span style={{
@@ -85,7 +85,7 @@ function WebCard({ item }) {
                style={{ textDecoration: 'none', display: 'block' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: '12px', color: 'rgba(129,140,248,0.75)', marginBottom: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+                        <p style={{ fontSize: '12px', color: 'rgba(61,139,255,0.75)', marginBottom: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
                             {item.url}
                         </p>
                         <h3 className="group-hover:underline underline-offset-2 decoration-white/30"
@@ -179,7 +179,7 @@ function VideoCard({ item }) {
                         {item.title}
                     </h3>
                     {item.source && (
-                        <p style={{ fontSize: '12px', color: 'rgba(129,140,248,0.75)' }}>{item.source}</p>
+                        <p style={{ fontSize: '12px', color: 'rgba(61,139,255,0.75)' }}>{item.source}</p>
                     )}
                 </div>
             </a>
@@ -205,8 +205,8 @@ function NewsCard({ item }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
                         {item.source && (
                             <span style={{
-                                fontSize: '11px', fontWeight: 600, color: 'rgba(129,140,248,0.85)',
-                                background: 'rgba(129,140,248,0.10)', border: '1px solid rgba(129,140,248,0.20)',
+                                fontSize: '11px', fontWeight: 600, color: 'rgba(61,139,255,0.85)',
+                                background: 'rgba(61,139,255,0.10)', border: '1px solid rgba(61,139,255,0.20)',
                                 borderRadius: '999px', padding: '2px 8px',
                             }}>
                                 {item.source}
@@ -247,14 +247,14 @@ function InterpretationBanner({ interpretation, summary, confidence, metadata })
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             style={{
                 marginBottom: '24px', padding: '16px 18px', borderRadius: '12px',
-                border: '1px solid rgba(129,140,248,0.18)',
-                background: 'rgba(129,140,248,0.05)', backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(61,139,255,0.18)',
+                background: 'rgba(61,139,255,0.05)', backdropFilter: 'blur(12px)',
             }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
                 <span style={{
                     fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
-                    color: 'rgba(129,140,248,0.9)', background: 'rgba(129,140,248,0.12)',
-                    border: '1px solid rgba(129,140,248,0.25)', borderRadius: '999px', padding: '3px 10px',
+                    color: 'rgba(61,139,255,0.9)', background: 'rgba(61,139,255,0.12)',
+                    border: '1px solid rgba(61,139,255,0.25)', borderRadius: '999px', padding: '3px 10px',
                 }}>
                     {interpretation.modality} input
                 </span>
@@ -282,7 +282,7 @@ function InterpretationBanner({ interpretation, summary, confidence, metadata })
                 </p>
             )}
             {interpretation.notes?.length > 0 && (
-                <p style={{ fontSize: '11px', color: 'rgba(129,140,248,0.6)', marginTop: '6px' }}>
+                <p style={{ fontSize: '11px', color: 'rgba(61,139,255,0.6)', marginTop: '6px' }}>
                     {interpretation.notes.join(' · ')}
                 </p>
             )}
@@ -334,9 +334,9 @@ function TabButton({ id, label, icon, active, count, onClick }) {
                 display: 'flex', alignItems: 'center', gap: '6px',
                 padding: '7px 16px', borderRadius: '999px', fontSize: '13px',
                 fontWeight: active ? 600 : 400, cursor: 'pointer',
-                border: active ? '1px solid rgba(129,140,248,0.5)' : '1px solid rgba(255,255,255,0.09)',
-                background: active ? 'rgba(129,140,248,0.15)' : 'rgba(255,255,255,0.04)',
-                color: active ? 'rgba(200,200,255,0.95)' : 'rgba(255,255,255,0.45)',
+                border: active ? '1px solid rgba(61,139,255,0.5)' : '1px solid rgba(255,255,255,0.09)',
+                background: active ? 'rgba(61,139,255,0.15)' : 'rgba(255,255,255,0.04)',
+                color: active ? 'rgba(175,205,255,0.95)' : 'rgba(255,255,255,0.45)',
                 transition: 'all 0.2s ease',
             }}>
             <span style={{ fontSize: '14px' }}>{icon}</span>
@@ -344,9 +344,9 @@ function TabButton({ id, label, icon, active, count, onClick }) {
             {count > 0 && (
                 <span style={{
                     fontSize: '10px', fontWeight: 500,
-                    background: active ? 'rgba(129,140,248,0.25)' : 'rgba(255,255,255,0.08)',
+                    background: active ? 'rgba(61,139,255,0.25)' : 'rgba(255,255,255,0.08)',
                     borderRadius: '999px', padding: '1px 6px',
-                    color: active ? 'rgba(200,200,255,0.8)' : 'rgba(255,255,255,0.30)',
+                    color: active ? 'rgba(175,205,255,0.8)' : 'rgba(255,255,255,0.30)',
                 }}>
                     {count}
                 </span>
@@ -363,6 +363,8 @@ export default function Search() {
 
     const [activeTab, setActiveTab] = useState('all');
     const [loading, setLoading] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [page, setPage] = useState(1);
     const [error, setError] = useState(null);
     const [data, setData] = useState(null);
     const requestKeyRef = useRef(null);
@@ -370,37 +372,68 @@ export default function Search() {
     const displayQuery = fileMeta ? `${query ? `${query} ` : ''}[${fileMeta.name}]` : query;
     const hasQuery = Boolean(query || fileMeta);
 
+    const searchAt = location.state?.at;
     useEffect(() => {
         if (!hasQuery) return;
-        // Re-run only when the navigation state actually changes.
-        const requestKey = JSON.stringify({ query, file: fileMeta?.name, at: location.state?.at });
+        // One request per distinct search. The key dedupes React StrictMode's
+        // double effect-invoke (and any incidental re-render) so we don't fire
+        // — or abort — the request twice. We deliberately do NOT use an
+        // AbortController here: aborting on the StrictMode cleanup was killing
+        // the only in-flight request, which is why results never loaded.
+        const requestKey = JSON.stringify({ query, file: fileMeta?.name, at: searchAt });
         if (requestKeyRef.current === requestKey) return;
         requestKeyRef.current = requestKey;
 
-        const controller = new AbortController();
         const file = getPendingFile();
 
-        // Data-fetch effect: the synchronous resets below intentionally clear
-        // stale results the moment a new query begins.
-        /* eslint-disable react-hooks/set-state-in-effect */
+        // Synchronously clear stale results the moment a new query begins.
         setLoading(true);
         setError(null);
         setData(null);
         setActiveTab('all');
-        /* eslint-enable react-hooks/set-state-in-effect */
+        setPage(1);
 
-        searchApi({ query, file, signal: controller.signal })
+        searchApi({ query, file, page: 1 })
             .then(response => {
+                if (requestKeyRef.current !== requestKey) return; // superseded
                 setData(response);
                 clearPendingFile();
             })
             .catch(err => {
-                if (err.name !== 'AbortError') setError(err.message);
+                if (requestKeyRef.current === requestKey) setError(err.message);
             })
-            .finally(() => setLoading(false));
+            .finally(() => {
+                if (requestKeyRef.current === requestKey) setLoading(false);
+            });
+    }, [hasQuery, query, fileMeta?.name, searchAt]);
 
-        return () => controller.abort();
-    }, [hasQuery, query, fileMeta, location.state]);
+    // Fetch the next page and append its results per-category. We resend the
+    // interpreted query as text so file inputs aren't re-processed each page.
+    async function loadMore() {
+        if (loadingMore || !data?.metadata?.has_more) return;
+        const nextPage = page + 1;
+        const textQuery = data.interpretation?.interpreted_query || query;
+        setLoadingMore(true);
+        setError(null);
+        try {
+            const response = await searchApi({ query: textQuery, page: nextPage });
+            setData(prev => ({
+                ...prev,
+                results: {
+                    web: [...(prev.results.web ?? []), ...(response.results.web ?? [])],
+                    images: [...(prev.results.images ?? []), ...(response.results.images ?? [])],
+                    videos: [...(prev.results.videos ?? []), ...(response.results.videos ?? [])],
+                    news: [...(prev.results.news ?? []), ...(response.results.news ?? [])],
+                },
+                metadata: { ...prev.metadata, has_more: response.metadata.has_more },
+            }));
+            setPage(nextPage);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoadingMore(false);
+        }
+    }
 
     const results = {
         web: data?.results?.web ?? [],
@@ -489,25 +522,44 @@ export default function Search() {
                     </section>
                 )}
                 {show === 'news' && results.news.length === 0 && <EmptySection label="news" />}
+
+                {/* Pagination — on the "All" tab results are a per-category
+                    preview, so paging happens inside a specific category tab. */}
+                {data.metadata?.has_more && (
+                    show === 'all' ? (
+                        <p style={{ textAlign: 'center', fontSize: '13px', color: 'rgba(255,255,255,0.3)', paddingTop: '8px' }}>
+                            Open a category tab above to load more results.
+                        </p>
+                    ) : (
+                        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '8px' }}>
+                            <motion.button
+                                onClick={loadMore}
+                                disabled={loadingMore}
+                                whileHover={loadingMore ? {} : { scale: 1.03 }}
+                                whileTap={loadingMore ? {} : { scale: 0.97 }}
+                                style={{
+                                    padding: '11px 28px', borderRadius: '999px',
+                                    border: '1px solid rgba(61,139,255,0.35)',
+                                    background: loadingMore ? 'rgba(255,255,255,0.05)' : 'rgba(61,139,255,0.12)',
+                                    color: loadingMore ? 'rgba(255,255,255,0.4)' : 'rgba(175,205,255,0.95)',
+                                    fontSize: '13px', fontWeight: 600,
+                                    cursor: loadingMore ? 'wait' : 'pointer',
+                                    fontFamily: 'Inter, system-ui, sans-serif',
+                                }}>
+                                {loadingMore ? 'Loading…' : `Load more (page ${page + 1})`}
+                            </motion.button>
+                        </div>
+                    )
+                )}
             </motion.div>
         );
     }
 
     return (
-        <div style={{ minHeight: '100vh', background: '#000', position: 'relative' }}>
-            {/* Background */}
-            <video src="/1.mp4" autoPlay muted loop playsInline style={{
-                position: 'absolute', inset: 0, width: '100%', height: '100%',
-                objectFit: 'cover', opacity: 0.28, zIndex: 0,
-                transform: 'translateY(4%)', pointerEvents: 'none',
-            }} />
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 1, pointerEvents: 'none' }} />
+        <div style={{ minHeight: '100vh', position: 'relative' }}>
+            <Navbar />
 
-            <div style={{ position: 'relative', zIndex: 50 }}>
-                <Navbar />
-            </div>
-
-            <div style={{ position: 'relative', zIndex: 10, paddingTop: '96px', paddingBottom: '96px' }}>
+            <div style={{ position: 'relative', zIndex: 10, paddingTop: 'calc(var(--nav-height) + 32px)', paddingBottom: '96px' }}>
                 <div style={{ maxWidth: '1024px', margin: '0 auto', paddingLeft: '24px', paddingRight: '24px' }}>
 
                     <div style={{ width: '100%', marginBottom: '32px' }}>

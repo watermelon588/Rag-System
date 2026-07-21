@@ -6,9 +6,16 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, UploadFile
 
-from app.api.deps import CurrentUser, DbSession, get_chunk_retriever, get_document_indexer
+from app.api.deps import (
+    CurrentUser,
+    get_chunk_repo,
+    get_chunk_retriever,
+    get_document_indexer,
+    get_document_repo,
+)
 from app.core.exceptions import NotFoundError
-from app.db.models import Document, DocumentChunk
+from app.db.models import Document
+from app.db.repositories import ChunkRepository, DocumentRepository
 from app.schemas.documents import (
     ChunkLocation,
     DocumentChunkPreview,
@@ -26,14 +33,12 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 
 Indexer = Annotated[DocumentIndexer, Depends(get_document_indexer)]
 Retriever = Annotated[ChunkRetriever, Depends(get_chunk_retriever)]
+Documents = Annotated[DocumentRepository, Depends(get_document_repo)]
+Chunks = Annotated[ChunkRepository, Depends(get_chunk_repo)]
 
 
-def _owned_document(db: DbSession, user_id: str, document_id: str) -> Document:
-    document = (
-        db.query(Document)
-        .filter(Document.id == document_id, Document.owner_id == user_id)
-        .first()
-    )
+def _owned_document(documents: DocumentRepository, user_id: str, document_id: str) -> Document:
+    document = documents.get(user_id, document_id)
     if document is None:
         raise NotFoundError("Document not found")
     return document
@@ -48,22 +53,17 @@ async def upload_document(
 
 
 @router.get("", response_model=DocumentListResponse)
-def list_documents(user: CurrentUser, db: DbSession) -> DocumentListResponse:
-    documents = (
-        db.query(Document)
-        .filter(Document.owner_id == user.id)
-        .order_by(Document.created_at.desc())
-        .all()
-    )
+def list_documents(user: CurrentUser, documents: Documents) -> DocumentListResponse:
+    owned = documents.list_by_owner(user.id)
     return DocumentListResponse(
-        documents=[DocumentSummary.model_validate(document) for document in documents],
-        total=len(documents),
+        documents=[DocumentSummary.model_validate(document) for document in owned],
+        total=len(owned),
     )
 
 
 @router.get("/{document_id}", response_model=DocumentDetail)
-def get_document(document_id: str, user: CurrentUser, db: DbSession) -> DocumentDetail:
-    return DocumentDetail.model_validate(_owned_document(db, user.id, document_id))
+def get_document(document_id: str, user: CurrentUser, documents: Documents) -> DocumentDetail:
+    return DocumentDetail.model_validate(_owned_document(documents, user.id, document_id))
 
 
 @router.get(
@@ -74,15 +74,10 @@ def get_document(document_id: str, user: CurrentUser, db: DbSession) -> Document
     "navigation from any citation back to the original content.",
 )
 def get_document_chunks(
-    document_id: str, user: CurrentUser, db: DbSession
+    document_id: str, user: CurrentUser, documents: Documents, chunks: Chunks
 ) -> DocumentChunksResponse:
-    document = _owned_document(db, user.id, document_id)
-    chunks = (
-        db.query(DocumentChunk)
-        .filter(DocumentChunk.document_id == document.id)
-        .order_by(DocumentChunk.ordinal)
-        .all()
-    )
+    document = _owned_document(documents, user.id, document_id)
+    rows = chunks.list_for_document(document.id)
     return DocumentChunksResponse(
         document_id=document.id,
         chunks=[
@@ -101,9 +96,9 @@ def get_document_chunks(
                 ),
                 text=chunk.text,
             )
-            for chunk in chunks
+            for chunk in rows
         ],
-        total=len(chunks),
+        total=len(rows),
     )
 
 

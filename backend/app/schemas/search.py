@@ -17,6 +17,7 @@ class Modality(str, Enum):
     TEXT = "text"
     IMAGE = "image"
     AUDIO = "audio"
+    VIDEO = "video"
     MIXED = "mixed"
 
 
@@ -88,6 +89,12 @@ class SearchMetadata(BaseModel):
     duration_ms: float
     stages: list[PipelineStage]
     degraded: bool = False
+    page: int = 1
+    per_page: int = 10
+    has_more: bool = Field(
+        default=False,
+        description="Whether another page of results is likely available",
+    )
 
 
 class SearchResponse(BaseModel):

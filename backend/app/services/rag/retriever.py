@@ -9,10 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError
-from app.db.models import Document, DocumentChunk
+from app.db.repositories import ChunkRepository, DocumentRepository
 from app.ml import inference
 from app.schemas.documents import ChunkLocation
 from app.services.vector import get_document_store
@@ -27,26 +25,9 @@ class RetrievedChunk:
 
 
 class ChunkRetriever:
-    def __init__(self, db: Session):
-        self._db = db
-
-    def _scoped_documents(
-        self, owner_id: str, document_ids: list[str] | None
-    ) -> list[Document]:
-        query = self._db.query(Document).filter(
-            Document.owner_id == owner_id, Document.status == "ready"
-        )
-        if document_ids:
-            query = query.filter(Document.id.in_(document_ids))
-        documents = query.all()
-        if document_ids and len(documents) != len(set(document_ids)):
-            found = {document.id for document in documents}
-            missing = [doc_id for doc_id in document_ids if doc_id not in found]
-            raise NotFoundError(
-                "Some requested documents were not found or are not ready",
-                details={"missing_document_ids": missing},
-            )
-        return documents
+    def __init__(self, documents: DocumentRepository, chunks: ChunkRepository):
+        self._documents = documents
+        self._chunks = chunks
 
     def retrieve(
         self,
@@ -56,17 +37,19 @@ class ChunkRetriever:
         document_ids: list[str] | None = None,
         top_k: int = 6,
     ) -> list[RetrievedChunk]:
-        documents = self._scoped_documents(owner_id, document_ids)
+        documents = self._documents.list_ready(owner_id, document_ids)
+        if document_ids and len(documents) != len(set(document_ids)):
+            found = {document.id for document in documents}
+            missing = [doc_id for doc_id in document_ids if doc_id not in found]
+            raise NotFoundError(
+                "Some requested documents were not found or are not ready",
+                details={"missing_document_ids": missing},
+            )
         if not documents:
             return []
-        names = {document.id: document.filename for document in documents}
 
-        allowed_ids = {
-            chunk_id
-            for (chunk_id,) in self._db.query(DocumentChunk.id).filter(
-                DocumentChunk.document_id.in_(names.keys())
-            )
-        }
+        names = {document.id: document.filename for document in documents}
+        allowed_ids = self._chunks.ids_for_documents(list(names.keys()))
         if not allowed_ids:
             return []
 
@@ -75,12 +58,7 @@ class ChunkRetriever:
         if not hits:
             return []
 
-        rows = {
-            row.id: row
-            for row in self._db.query(DocumentChunk).filter(
-                DocumentChunk.id.in_([hit.id for hit in hits])
-            )
-        }
+        rows = self._chunks.get_many([hit.id for hit in hits])
 
         retrieved = []
         for hit in hits:

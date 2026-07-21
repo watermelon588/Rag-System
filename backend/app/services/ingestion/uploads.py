@@ -19,8 +19,12 @@ from app.core.exceptions import InvalidInputError, PayloadTooLargeError, Unsuppo
 
 _CHUNK = 1024 * 1024
 
+# .webm appears in both audio and video sets: our in-app voice recorder
+# produces audio/webm, but .webm is also a video container. The classifier
+# in modalities.py disambiguates by content-type.
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".webm", ".ogg", ".flac"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"}
 
 _MAGIC_SIGNATURES: dict[str, list[bytes]] = {
     ".png": [b"\x89PNG"],

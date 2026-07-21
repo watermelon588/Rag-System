@@ -1,0 +1,7 @@
+# Root dev-launcher tooling (concurrently). The backend/ and frontend/
+# directories keep their own .gitignore files.
+/node_modules/
+
+# Local editor state (the shared settings.json is intentionally committed)
+.vscode/*
+!.vscode/settings.json

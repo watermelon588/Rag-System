@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/Navbar';
+import DocumentPreview from '../components/DocumentPreview';
 import * as documentsApi from '../services/documentsApi';
 
 const FORMAT_ICONS = {
@@ -39,6 +40,7 @@ export default function Documents() {
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState(null);
     const [dragging, setDragging] = useState(false);
+    const [viewDoc, setViewDoc] = useState(null);   // { documentId, documentName }
     const fileInputRef = useRef(null);
 
     const refresh = useCallback(async () => {
@@ -92,18 +94,13 @@ export default function Documents() {
     }
 
     function startChat() {
-        navigate('/chat', { state: { documentIds: [...selected] } });
+        navigate('/chat', { state: { documentIds: [...selected], startNew: true } });
     }
 
     const readyCount = documents.filter(d => d.status === 'ready').length;
 
     return (
-        <div style={{ minHeight: '100vh', background: '#000', position: 'relative' }}>
-            <div style={{
-                position: 'fixed', inset: 0,
-                background: 'radial-gradient(ellipse at 50% 0%, rgba(76,29,149,0.18), transparent 55%)',
-                pointerEvents: 'none',
-            }} />
+        <div style={{ minHeight: '100vh', position: 'relative' }}>
             <Navbar />
 
             <div style={{ position: 'relative', zIndex: 10, maxWidth: '860px', margin: '0 auto', padding: '110px 24px 96px' }}>
@@ -125,8 +122,8 @@ export default function Documents() {
                     onClick={() => fileInputRef.current?.click()}
                     style={{
                         padding: '36px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer',
-                        border: `1.5px dashed ${dragging ? 'rgba(167,139,250,0.65)' : 'rgba(255,255,255,0.15)'}`,
-                        background: dragging ? 'rgba(139,92,246,0.08)' : 'rgba(255,255,255,0.03)',
+                        border: `1.5px dashed ${dragging ? 'rgba(61,139,255,0.65)' : 'rgba(255,255,255,0.15)'}`,
+                        background: dragging ? 'rgba(61,139,255,0.08)' : 'rgba(255,255,255,0.03)',
                         transition: 'all 0.2s ease', marginBottom: '28px',
                     }}>
                     <input
@@ -135,9 +132,21 @@ export default function Documents() {
                         onChange={e => { handleUpload([...e.target.files]); e.target.value = ''; }}
                     />
                     <div style={{ fontSize: '28px', marginBottom: '10px' }}>{uploading ? '⏳' : '📎'}</div>
-                    <p style={{ fontSize: '14px', fontWeight: 600, color: 'rgba(255,255,255,0.8)', marginBottom: '4px' }}>
-                        {uploading ? 'Uploading & indexing…' : 'Drop files here or click to upload'}
+                    <p style={{ fontSize: '14px', fontWeight: 600, color: 'rgba(255,255,255,0.8)', marginBottom: '12px' }}>
+                        {uploading ? 'Uploading & indexing…' : 'Drag & drop a document here'}
                     </p>
+                    <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                        disabled={uploading}
+                        style={{
+                            padding: '10px 22px', borderRadius: 'var(--radius-pill)',
+                            border: '1px solid var(--accent-border)', background: 'var(--accent-soft)',
+                            color: 'var(--accent-text)', fontSize: '13px', fontWeight: 700,
+                            cursor: uploading ? 'wait' : 'pointer', marginBottom: '12px',
+                        }}>
+                        ⬆ Choose a file to upload
+                    </button>
                     <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
                         PDF · DOCX · TXT · MD · CSV · Excel · HTML · XML · JSON · source code
                     </p>
@@ -197,10 +206,10 @@ export default function Documents() {
                                         display: 'flex', alignItems: 'center', gap: '14px',
                                         padding: '14px 18px', borderRadius: '12px',
                                         border: selected.has(document.id)
-                                            ? '1px solid rgba(129,140,248,0.5)'
+                                            ? '1px solid rgba(61,139,255,0.5)'
                                             : '1px solid rgba(255,255,255,0.09)',
                                         background: selected.has(document.id)
-                                            ? 'rgba(129,140,248,0.08)'
+                                            ? 'rgba(61,139,255,0.08)'
                                             : 'rgba(255,255,255,0.03)',
                                         cursor: document.status === 'ready' ? 'pointer' : 'default',
                                         transition: 'border-color 0.15s ease, background 0.15s ease',
@@ -227,6 +236,21 @@ export default function Documents() {
                                         )}
                                     </div>
                                     <StatusBadge status={document.status} />
+                                    {document.status === 'ready' && (
+                                        <button
+                                            onClick={e => { e.stopPropagation(); setViewDoc({ documentId: document.id, documentName: document.filename }); }}
+                                            title="View document content"
+                                            style={{
+                                                padding: '6px 14px', borderRadius: 'var(--radius-pill)',
+                                                background: 'var(--surface-2)', border: '1px solid var(--border)',
+                                                color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                                            }}
+                                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-border)'; e.currentTarget.style.color = 'var(--accent-text)'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                                        >
+                                            View
+                                        </button>
+                                    )}
                                     <button
                                         onClick={e => { e.stopPropagation(); handleDelete(document.id); }}
                                         title="Delete document"
@@ -246,6 +270,31 @@ export default function Documents() {
                     </div>
                 )}
             </div>
+
+            {/* Document viewer modal */}
+            <AnimatePresence>
+                {viewDoc && (
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        onClick={() => setViewDoc(null)}
+                        style={{
+                            position: 'fixed', inset: 0, zIndex: 1000, display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', padding: '80px 24px 40px',
+                            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+                        }}>
+                        <motion.div
+                            initial={{ scale: 0.96, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 10 }}
+                            onClick={e => e.stopPropagation()}
+                            style={{ width: '100%', maxWidth: '760px', height: '100%', maxHeight: '80vh' }}>
+                            <DocumentPreview
+                                documentId={viewDoc.documentId}
+                                documentName={viewDoc.documentName}
+                                onClose={() => setViewDoc(null)}
+                            />
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

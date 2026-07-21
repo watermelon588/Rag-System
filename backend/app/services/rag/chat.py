@@ -11,13 +11,12 @@ from __future__ import annotations
 
 import re
 
-from sqlalchemy.orm import Session
-
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
 from app.core.logging import get_logger
-from app.db.models import ChatMessage, ChatSession
-from app.ml import inference
+from app.db.models import ChatMessage, ChatSession, new_id, utcnow
+from app.db.repositories import ChatRepository
+from app.ml import generation
 from app.schemas.chat import AskResponse, ChatMessageOut, Citation, RetrievalDebug
 from app.schemas.search import ResultCategory
 from app.services.providers.base import SearchProvider
@@ -39,9 +38,14 @@ _NO_CONTEXT_ANSWER = (
 
 
 class DocumentChatService:
-    def __init__(self, db: Session, web_provider: SearchProvider | None = None):
-        self._db = db
-        self._retriever = ChunkRetriever(db)
+    def __init__(
+        self,
+        chat: ChatRepository,
+        retriever: ChunkRetriever,
+        web_provider: SearchProvider | None = None,
+    ):
+        self._chat = chat
+        self._retriever = retriever
         self._web_provider = web_provider
 
     # ------------------------------------------------------------- sessions
@@ -49,37 +53,23 @@ class DocumentChatService:
     def create_session(
         self, owner_id: str, title: str | None, document_ids: list[str] | None
     ) -> ChatSession:
-        session = ChatSession(
-            owner_id=owner_id,
-            title=title or "New conversation",
-            document_ids=document_ids,
-        )
-        self._db.add(session)
-        self._db.commit()
-        return session
+        return self._chat.create_session(owner_id, title or "New conversation", document_ids)
 
     def get_session(self, owner_id: str, session_id: str) -> ChatSession:
-        session = (
-            self._db.query(ChatSession)
-            .filter(ChatSession.id == session_id, ChatSession.owner_id == owner_id)
-            .first()
-        )
+        session = self._chat.get_session(owner_id, session_id)
         if session is None:
             raise NotFoundError("Chat session not found")
         return session
 
     def list_sessions(self, owner_id: str) -> list[ChatSession]:
-        return (
-            self._db.query(ChatSession)
-            .filter(ChatSession.owner_id == owner_id)
-            .order_by(ChatSession.updated_at.desc())
-            .all()
-        )
+        return self._chat.list_sessions(owner_id)
+
+    def list_messages(self, session_id: str) -> list[ChatMessage]:
+        return self._chat.list_messages(session_id)
 
     def delete_session(self, owner_id: str, session_id: str) -> None:
-        session = self.get_session(owner_id, session_id)
-        self._db.delete(session)
-        self._db.commit()
+        self.get_session(owner_id, session_id)  # ownership check
+        self._chat.delete_session(session_id)
 
     # ----------------------------------------------------------------- chat
 
@@ -116,19 +106,25 @@ class DocumentChatService:
             citations = []
             confidence = 0.0
 
-        self._db.add(ChatMessage(session_id=session.id, role="user", content=question))
+        # Persist the user turn and the assistant turn.
+        self._chat.add_message(
+            ChatMessage(id=new_id(), session_id=session.id, role="user", content=question)
+        )
         assistant_message = ChatMessage(
+            id=new_id(),
             session_id=session.id,
             role="assistant",
             content=answer,
             citations=[citation.model_dump() for citation in citations] or None,
             confidence=confidence,
+            created_at=utcnow(),
         )
-        self._db.add(assistant_message)
+        self._chat.add_message(assistant_message)
 
+        updates: dict = {"updated_at": utcnow()}
         if session.title == "New conversation":
-            session.title = question[:80] + ("…" if len(question) > 80 else "")
-        self._db.commit()
+            updates["title"] = question[:80] + ("…" if len(question) > 80 else "")
+        self._chat.update_session(session.id, updates)
 
         return AskResponse(
             session_id=session.id,
@@ -147,7 +143,7 @@ class DocumentChatService:
 
     def _history_block(self, session: ChatSession) -> str:
         window = get_settings().chat_history_window
-        recent = session.messages[-window:] if session.messages else []
+        recent = self._chat.recent_messages(session.id, window)
         if not recent:
             return ""
         lines = [
@@ -176,15 +172,11 @@ class DocumentChatService:
             + f"\n\nQuestion: {question}\n\nAnswer with inline [n] citations:"
         )
 
-        generated = inference.try_generate_text(
-            prompt, system=_SYSTEM_PROMPT, max_new_tokens=500
-        )
+        generated = generation.generate(prompt, system=_SYSTEM_PROMPT)
 
         if generated:
             answer = generated.strip()
             cited_markers = self._extract_markers(answer, len(chunks))
-            # A grounded answer must cite; if the model cited nothing,
-            # attribute it to the strongest passage.
             if not cited_markers:
                 answer += " [1]"
                 cited_markers = [1]

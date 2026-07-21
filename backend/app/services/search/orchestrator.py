@@ -59,10 +59,12 @@ class SearchOrchestrator:
         file: UploadFile | None,
         categories: list[ResultCategory] | None = None,
         limit: int = 10,
+        page: int = 1,
     ) -> SearchResponse:
         timer = _StageTimer()
         pipeline_start = time.perf_counter()
         categories = categories or ALL_CATEGORIES
+        page = max(1, page)
 
         # Fail fast before any (potentially expensive) model work.
         if not self._provider.is_configured():
@@ -84,12 +86,19 @@ class SearchOrchestrator:
 
         # Stage 2 — candidate retrieval from the provider.
         started = time.perf_counter()
-        raw_results = self._provider.search(interpretation.interpreted_query, categories, limit)
+        raw_results = self._provider.search(
+            interpretation.interpreted_query, categories, limit, page
+        )
         total_raw = sum(len(items) for items in raw_results.values())
+        # Providers rarely return exactly `limit` items per page (Serper yields
+        # ~9 organic results for a requested 10), so treat a near-full page as
+        # "more available" rather than requiring an exact match.
+        page_threshold = max(1, int(limit * 0.6))
+        has_more = any(len(items) >= page_threshold for items in raw_results.values())
         timer.record(
             "retrieval",
             started,
-            detail=f"{total_raw} candidates from {self._provider.name}",
+            detail=f"{total_raw} candidates from {self._provider.name} (page {page})",
         )
 
         # Stage 3 — semantic re-ranking (per category, single embedding batch each).
@@ -127,5 +136,8 @@ class SearchOrchestrator:
                 duration_ms=round((time.perf_counter() - pipeline_start) * 1000, 1),
                 stages=timer.stages,
                 degraded=degraded,
+                page=page,
+                per_page=limit,
+                has_more=has_more,
             ),
         )

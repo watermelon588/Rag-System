@@ -9,7 +9,7 @@ const CONFIDENCE_COLORS = {
 
 const SIGNAL_LABELS = {
     semantic_similarity: 'Semantic match',
-    keyword_overlap: 'Keyword match',
+    bm25_keyword: 'Keyword (BM25)',
     provider_position: 'Source ranking',
 };
 
@@ -67,7 +67,7 @@ export default function RelevancePanel({ analysis }) {
                     type="button"
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(v => !v); }}
                     style={{
-                        fontSize: '11px', color: 'rgba(129,140,248,0.85)', background: 'transparent',
+                        fontSize: '11px', color: 'rgba(61,139,255,0.85)', background: 'transparent',
                         border: 'none', cursor: 'pointer', padding: 0, fontWeight: 500,
                     }}
                 >
@@ -106,7 +106,7 @@ export default function RelevancePanel({ analysis }) {
                                         }}>
                                             <div style={{
                                                 width: `${Math.round(signal.score * 100)}%`, height: '100%',
-                                                background: 'rgba(129,140,248,0.75)', borderRadius: '999px',
+                                                background: 'rgba(61,139,255,0.75)', borderRadius: '999px',
                                             }} />
                                         </div>
                                         <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', width: '58px', textAlign: 'right' }}>
@@ -119,8 +119,8 @@ export default function RelevancePanel({ analysis }) {
                                 <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                                     {analysis.matched_terms.slice(0, 8).map(term => (
                                         <span key={term} style={{
-                                            fontSize: '10px', color: 'rgba(129,140,248,0.85)',
-                                            background: 'rgba(129,140,248,0.10)', border: '1px solid rgba(129,140,248,0.22)',
+                                            fontSize: '10px', color: 'rgba(61,139,255,0.85)',
+                                            background: 'rgba(61,139,255,0.10)', border: '1px solid rgba(61,139,255,0.22)',
                                             borderRadius: '999px', padding: '2px 8px',
                                         }}>
                                             {term}

@@ -24,7 +24,7 @@ from app.core.middleware import (
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.db.session import init_db
+from app.db import mongo
 from app.ml.loaders import register_all as register_models
 
 logger = get_logger(__name__)
@@ -34,7 +34,23 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     settings = get_settings()
     settings.ensure_directories()
-    init_db()
+
+    # Connect to MongoDB. A clear, early failure beats confusing per-request
+    # errors — but in development we degrade to a warning so the search-only
+    # features still work without a database configured.
+    try:
+        mongo.ping()
+        mongo.init_indexes()
+        logger.info("Connected to MongoDB database '%s'", settings.mongodb_db_name)
+    except Exception as exc:  # noqa: BLE001
+        if settings.is_production:
+            raise RuntimeError(f"Cannot reach MongoDB: {exc}") from exc
+        logger.warning(
+            "MongoDB unavailable (%s) — auth and document features will fail "
+            "until MONGODB_URI points at a reachable server.",
+            exc,
+        )
+
     register_models()  # registration only — models load lazily on first use
     if settings.is_production and settings.secret_key == "change-me-in-production":
         raise RuntimeError("SECRET_KEY must be set in production")
@@ -42,6 +58,7 @@ async def lifespan(app: FastAPI):
         logger.warning("SERPER_API_KEY not set — web search will be unavailable")
     logger.info("%s v%s started (%s)", settings.app_name, __version__, settings.environment)
     yield
+    mongo.close()
     logger.info("Shutting down")
 
 

@@ -6,7 +6,7 @@ import re
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.ml import inference
+from app.ml import generation
 from app.schemas.search import QueryInterpretation
 from app.services.ingestion.modalities import ModalityResult
 
@@ -41,19 +41,35 @@ def significant_terms(text: str) -> list[str]:
 
 
 def _llm_refine(query: str) -> str | None:
-    """Ask the local LLM for a tighter search query. Optional — any failure
-    silently falls back to the cleaned query."""
-    response = inference.try_generate_text(
-        f"Rewrite this as a concise web search query. Reply with the query only, "
-        f"no quotes or commentary.\n\nInput: {query}",
-        system="You optimise noisy user input into short, precise search queries.",
-        max_new_tokens=30,
+    """Ask the local LLM to *tighten* a noisy query (remove filler, fix
+    phrasing). It must never expand or reinterpret the query — a short,
+    clean query is returned unchanged. Any failure or suspicious rewrite
+    falls back to the cleaned query."""
+    response = generation.generate(
+        "Clean up this search query by removing filler words and fixing "
+        "phrasing. Do NOT add new words, topics, or assumptions. Keep it as "
+        "short as the original or shorter. Reply with the query only.\n\n"
+        f"Query: {query}",
+        system=(
+            "You tidy noisy search queries. You only remove noise and fix "
+            "phrasing; you never add new concepts or expand the query."
+        ),
+        max_new_tokens=24,
     )
     if not response:
         return None
     refined = response.strip().strip('"').splitlines()[0].strip()
-    # Reject degenerate rewrites (empty, too long, or echoing instructions).
-    if not refined or len(refined) > 200 or len(refined.split()) > 20:
+    if not refined or len(refined) > 200:
+        return None
+
+    original_terms = set(significant_terms(query))
+    refined_terms = set(significant_terms(refined))
+    # Reject expansion: a refinement must not grow the query or introduce
+    # significant terms that were not in the original (that is the exact
+    # failure mode where "frog" becomes "how to identify and care for a frog").
+    if len(refined.split()) > len(query.split()):
+        return None
+    if refined_terms - original_terms:
         return None
     return refined
 
@@ -70,7 +86,11 @@ def interpret(modality_result: ModalityResult) -> QueryInterpretation:
     cleaned = clean_query(modality_result.query_text)
     interpreted = cleaned
 
-    if settings.enable_query_expansion:
+    # Only refine longer, potentially-noisy queries. Short keyword queries
+    # (e.g. "frog") are already ideal search input, so we skip the slow
+    # on-CPU LLM call and search them verbatim.
+    is_long_enough = len(significant_terms(cleaned)) >= settings.query_refine_min_words
+    if settings.enable_query_expansion and is_long_enough:
         refined = _llm_refine(cleaned)
         if refined:
             # The model sometimes re-adds instruction boilerplate; clean again.

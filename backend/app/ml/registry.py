@@ -65,7 +65,9 @@ class ModelRegistry:
             except Exception as exc:  # noqa: BLE001 — degrade, never crash
                 entry.failed = True
                 entry.error = str(exc)
-                logger.warning("Capability '%s' failed to load: %s", name, exc)
+                logger.warning(
+                    "Capability '%s' failed to load: %s", name, exc, exc_info=True
+                )
                 raise ModelUnavailableError(
                     f"Capability '{name}' is unavailable: {exc}"
                 ) from exc

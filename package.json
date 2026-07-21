@@ -1,0 +1,15 @@
+{
+  "name": "multimodal-ai-retrieval-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dev launcher — runs the FastAPI backend and the Vite frontend together.",
+  "scripts": {
+    "dev": "concurrently --names \"backend,frontend\" --prefix-colors \"blue,green\" --kill-others-on-fail \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && .venv\\Scripts\\python -m uvicorn app.main:app --reload --port 8000",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "install:all": "npm install && npm --prefix frontend install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

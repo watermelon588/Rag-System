@@ -10,15 +10,13 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         let cancelled = false;
         async function bootstrap() {
-            if (!authApi.isAuthenticated()) {
-                setInitializing(false);
-                return;
-            }
+            // Auth lives in httpOnly cookies the client can't read, so we ask
+            // the server who we are. A 401 simply means "not signed in".
             try {
                 const profile = await authApi.fetchProfile();
                 if (!cancelled) setUser(profile);
             } catch {
-                authApi.logout(); // stale/invalid tokens
+                if (!cancelled) setUser(null);
             } finally {
                 if (!cancelled) setInitializing(false);
             }
@@ -39,8 +37,8 @@ export function AuthProvider({ children }) {
         return profile;
     }, []);
 
-    const logout = useCallback(() => {
-        authApi.logout();
+    const logout = useCallback(async () => {
+        await authApi.logout();
         setUser(null);
     }, []);
 
