@@ -6,10 +6,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.core.sanitize import SafeText, SafeTextOptional, SafeUrlOptional
+
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    display_name: str = Field(min_length=1, max_length=120)
+    display_name: SafeText = Field(min_length=1, max_length=120)
     password: str = Field(min_length=8, max_length=128)
 
 
@@ -45,9 +47,10 @@ class AuthResponse(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    display_name: str | None = Field(default=None, min_length=1, max_length=120)
-    bio: str | None = Field(default=None, max_length=500)
-    avatar_url: str | None = Field(default=None, max_length=2000)
+    display_name: SafeTextOptional = Field(default=None, min_length=1, max_length=120)
+    bio: SafeTextOptional = Field(default=None, max_length=500)
+    # Only absolute http(s) URLs — blocks javascript:/data: avatar payloads.
+    avatar_url: SafeUrlOptional = Field(default=None, max_length=2000)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -86,11 +89,23 @@ class SavedResultItem(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AvatarUploadSignature(BaseModel):
+    """Short-lived credentials for one direct browser→Cloudinary upload."""
+
+    cloud_name: str
+    api_key: str
+    timestamp: int
+    folder: str
+    signature: str
+    upload_url: str
+    max_bytes: int
+
+
 class SaveResultRequest(BaseModel):
-    category: str = Field(max_length=32)
-    title: str | None = Field(default=None, max_length=500)
-    url: str | None = Field(default=None, max_length=2000)
-    snippet: str | None = Field(default=None, max_length=2000)
-    source: str | None = Field(default=None, max_length=500)
-    thumbnail_url: str | None = Field(default=None, max_length=2000)
-    image_url: str | None = Field(default=None, max_length=2000)
+    category: str = Field(max_length=32, pattern=r"^[a-z]+$")
+    title: SafeTextOptional = Field(default=None, max_length=500)
+    url: SafeUrlOptional = Field(default=None, max_length=2000)
+    snippet: SafeTextOptional = Field(default=None, max_length=2000)
+    source: SafeTextOptional = Field(default=None, max_length=500)
+    thumbnail_url: SafeUrlOptional = Field(default=None, max_length=2000)
+    image_url: SafeUrlOptional = Field(default=None, max_length=2000)

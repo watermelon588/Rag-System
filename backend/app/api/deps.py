@@ -20,6 +20,7 @@ from app.db.repositories import (
     ChatRepository,
     ChunkRepository,
     DocumentRepository,
+    FeedbackRepository,
     SavedResultRepository,
     SearchHistoryRepository,
     UserRepository,
@@ -66,6 +67,10 @@ def get_search_history_repo(db: Db) -> SearchHistoryRepository:
 
 def get_saved_result_repo(db: Db) -> SavedResultRepository:
     return SavedResultRepository(db)
+
+
+def get_feedback_repo(db: Db) -> FeedbackRepository:
+    return FeedbackRepository(db)
 
 
 # ----------------------------------------------------------------- current user

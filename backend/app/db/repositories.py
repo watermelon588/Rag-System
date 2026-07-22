@@ -18,6 +18,7 @@ from app.db.models import (
     ChatSession,
     Document,
     DocumentChunk,
+    Feedback,
     SavedResult,
     SearchHistoryEntry,
     User,
@@ -256,6 +257,22 @@ class SavedResultRepository:
 
     def count(self, owner_id: str) -> int:
         return self._col.count_documents({"owner_id": owner_id})
+
+
+# ----------------------------------------------------------------- feedback
+
+class FeedbackRepository:
+    def __init__(self, db: Database):
+        self._col = db[mongo.FEEDBACK]
+
+    def add(
+        self, *, message: str, email: str | None, owner_id: str | None
+    ) -> Feedback:
+        entry = Feedback(
+            id=new_id(), message=message, email=email, owner_id=owner_id
+        )
+        self._col.insert_one(_to_mongo(entry))
+        return entry
 
 
 # ------------------------------------------------------------------ helpers

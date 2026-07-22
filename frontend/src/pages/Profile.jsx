@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Navbar from '../components/Navbar';
@@ -24,7 +24,7 @@ function Panel({ title, subtitle, children, style }) {
             transition={{ duration: 0.4, ease: 'easeOut' }}
             style={{
                 padding: '24px', borderRadius: '18px', border: '1px solid rgba(255,255,255,0.09)',
-                background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(20px)', ...style,
+                background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(var(--blur-lg))', ...style,
             }}>
             {title && <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{title}</h2>}
             {subtitle && <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.4)', marginTop: '4px', marginBottom: '18px' }}>{subtitle}</p>}
@@ -85,6 +85,8 @@ export default function Profile() {
     const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
     const [profileBusy, setProfileBusy] = useState(false);
     const [profileToast, setProfileToast] = useState(null);
+    const [avatarBusy, setAvatarBusy] = useState(false);
+    const avatarInputRef = useRef(null);
 
     const [pwBusy, setPwBusy] = useState(false);
     const [pwToast, setPwToast] = useState(null);
@@ -107,12 +109,47 @@ export default function Profile() {
         return () => { cancelled = true; };
     }, []);
 
+    async function handleAvatarPick(e) {
+        const file = e.target.files?.[0];
+        e.target.value = '';           // allow re-picking the same file
+        if (!file) return;
+
+        setAvatarBusy(true);
+        setProfileToast(null);
+        try {
+            // Uploads to Cloudinary and persists the URL in one step.
+            const url = await profileApi.uploadAvatar(file);
+            setAvatarUrl(url);
+            updateUser({ ...user, avatar_url: url });
+            setProfileToast({ type: 'success', message: 'Photo updated.' });
+        } catch (err) {
+            setProfileToast({ type: 'error', message: err.message });
+        } finally {
+            setAvatarBusy(false);
+        }
+    }
+
+    async function handleAvatarRemove() {
+        setAvatarBusy(true);
+        setProfileToast(null);
+        try {
+            const updated = await profileApi.updateProfile({ avatarUrl: null });
+            setAvatarUrl('');
+            updateUser(updated);
+            setProfileToast({ type: 'success', message: 'Photo removed.' });
+        } catch (err) {
+            setProfileToast({ type: 'error', message: err.message });
+        } finally {
+            setAvatarBusy(false);
+        }
+    }
+
     async function handleProfileSave(e) {
         e.preventDefault();
         setProfileBusy(true);
         setProfileToast(null);
         try {
-            const updated = await profileApi.updateProfile({ displayName, bio, avatarUrl });
+            const updated = await profileApi.updateProfile({ displayName, bio });
             updateUser(updated);
             setProfileToast({ type: 'success', message: 'Profile updated.' });
         } catch (err) {
@@ -222,9 +259,62 @@ export default function Profile() {
                                               onChange={e => setBio(e.target.value)} maxLength={500} placeholder="A short bio (optional)" />
                                 </div>
                                 <div>
-                                    <label style={labelStyle}>Avatar image URL</label>
-                                    <input style={inputStyle} value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)}
-                                           maxLength={2000} placeholder="https://…" />
+                                    <label style={labelStyle}>Profile photo</label>
+                                    <input
+                                        ref={avatarInputRef}
+                                        type="file"
+                                        accept="image/png,image/jpeg,image/webp,image/gif"
+                                        style={{ display: 'none' }}
+                                        onChange={handleAvatarPick}
+                                    />
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                        {avatarUrl && (
+                                            <img
+                                                src={avatarUrl}
+                                                alt=""
+                                                style={{
+                                                    width: '44px', height: '44px', borderRadius: 'var(--radius-sm)',
+                                                    objectFit: 'cover', border: '1px solid var(--border)',
+                                                }}
+                                            />
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => avatarInputRef.current?.click()}
+                                            disabled={avatarBusy}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                                                padding: '9px 16px', borderRadius: 'var(--radius-pill)',
+                                                background: 'var(--surface-2)', border: '1px solid var(--border)',
+                                                color: 'var(--text-secondary)', fontSize: 'var(--text-sm)',
+                                                fontWeight: 500, fontFamily: 'var(--font-sans)',
+                                                cursor: avatarBusy ? 'wait' : 'pointer',
+                                                transition: 'all var(--dur-fast) var(--ease-out)',
+                                            }}
+                                        >
+                                            {avatarBusy ? (
+                                                <><i className="fa-solid fa-circle-notch fa-spin" style={{ fontSize: '12px' }} /> Uploading…</>
+                                            ) : (
+                                                <><i className="fa-solid fa-plus" style={{ fontSize: '12px' }} /> Media</>
+                                            )}
+                                        </button>
+                                        {avatarUrl && !avatarBusy && (
+                                            <button
+                                                type="button"
+                                                onClick={handleAvatarRemove}
+                                                style={{
+                                                    background: 'transparent', border: 'none', cursor: 'pointer',
+                                                    color: 'var(--text-muted)', fontSize: 'var(--text-xs)',
+                                                    fontFamily: 'var(--font-sans)', textDecoration: 'underline',
+                                                }}
+                                            >
+                                                Remove
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', marginTop: '8px' }}>
+                                        PNG, JPG, WEBP or GIF · up to 5&nbsp;MB
+                                    </p>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                     <PrimaryBtn busy={profileBusy}>Save changes</PrimaryBtn>

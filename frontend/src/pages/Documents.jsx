@@ -280,7 +280,7 @@ export default function Documents() {
                         style={{
                             position: 'fixed', inset: 0, zIndex: 1000, display: 'flex',
                             alignItems: 'center', justifyContent: 'center', padding: '80px 24px 40px',
-                            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+                            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(var(--blur-sm))',
                         }}>
                         <motion.div
                             initial={{ scale: 0.96, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 10 }}

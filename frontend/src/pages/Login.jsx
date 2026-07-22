@@ -25,7 +25,7 @@ export function AuthShell({ title, subtitle, children }) {
                     style={{
                         width: '100%', maxWidth: '400px', padding: '36px',
                         borderRadius: '20px', border: '1px solid rgba(255,255,255,0.10)',
-                        background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(24px)',
+                        background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(var(--blur-xl))',
                         boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
                     }}>
                     <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>{title}</h1>

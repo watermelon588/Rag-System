@@ -286,7 +286,7 @@ export default function Chat() {
                                     position: 'absolute', top: 'calc(100% + 8px)', left: 0, zIndex: 1000,
                                     width: '320px', maxHeight: '60vh', overflowY: 'auto', padding: '8px',
                                     borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-strong)',
-                                    background: 'rgba(6,7,10,0.97)', boxShadow: 'var(--shadow-pop)', backdropFilter: 'blur(20px)',
+                                    background: 'rgba(6,7,10,0.97)', boxShadow: 'var(--shadow-pop)', backdropFilter: 'blur(var(--blur-lg))',
                                 }}>
                                 {sessions.length === 0 && (
                                     <p style={{ padding: '12px', fontSize: '13px', color: 'var(--text-faint)' }}>No conversations yet.</p>

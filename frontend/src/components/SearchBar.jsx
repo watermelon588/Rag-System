@@ -2,6 +2,28 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { setPendingFiles, clearPendingFiles } from '../fileStore';
+import { transcribe as transcribeApi } from '../services/searchApi';
+
+/* Recording formats in preference order. We must record in a container the
+   browser actually supports AND label the Blob/file with that same type —
+   forcing "audio/webm" onto e.g. Safari's MP4 output produces a file the
+   server cannot decode, which is why playback and transcription both failed. */
+const AUDIO_FORMATS = [
+    { mime: 'audio/webm;codecs=opus', ext: 'webm' },
+    { mime: 'audio/webm', ext: 'webm' },
+    { mime: 'audio/ogg;codecs=opus', ext: 'ogg' },
+    { mime: 'audio/mp4', ext: 'm4a' },
+    { mime: 'audio/mpeg', ext: 'mp3' },
+];
+
+function pickAudioFormat() {
+    if (typeof MediaRecorder === 'undefined') return null;
+    for (const format of AUDIO_FORMATS) {
+        if (MediaRecorder.isTypeSupported?.(format.mime)) return format;
+    }
+    // Let the browser choose; we still need a sane extension for the upload.
+    return { mime: '', ext: 'webm' };
+}
 
 /* ─── Upload type definitions ───────────────────────────────────── */
 const UPLOAD_TYPES = [
@@ -40,12 +62,24 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
     const [audioURL, setAudioURL] = useState(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [audioInstance, setAudioInstance] = useState(null);
+    const [voiceError, setVoiceError] = useState(null);
+    const [transcribing, setTranscribing] = useState(false);
 
     const navigate = useNavigate();
     const fileInputRef = useRef(null);
     const menuRef = useRef(null);
+    const streamRef = useRef(null);
+    const chunksRef = useRef([]);
+    const formatRef = useRef(null);
 
     const hasFiles = attachments.length > 0;
+
+    /* Release the microphone — the recording indicator stays on until every
+       track is stopped, so this must run on every exit path. */
+    const stopStream = useCallback(() => {
+        streamRef.current?.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+    }, []);
 
     /* ── close menu on outside click ────────────────────────────── */
     useEffect(() => {
@@ -63,6 +97,8 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
         return () => {
             attachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
             if (audioURL) URL.revokeObjectURL(audioURL);
+            // Never leave the mic hot after the component goes away.
+            streamRef.current?.getTracks().forEach(track => track.stop());
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -114,50 +150,155 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
         }
         setIsPlaying(false);
         setAudioBlob(null);
+        setVoiceError(null);
+        setTranscribing(false);
         if (audioURL) { URL.revokeObjectURL(audioURL); setAudioURL(null); }
 
         setShowVoiceModal(true);
 
+        // getUserMedia only exists in a secure context. Over plain HTTP on a
+        // LAN address `navigator.mediaDevices` is undefined, which previously
+        // surfaced as a misleading "permission denied".
+        if (!navigator.mediaDevices?.getUserMedia) {
+            setVoiceError(
+                window.isSecureContext
+                    ? 'This browser does not support audio recording.'
+                    : 'Recording needs a secure context. Open the app on http://localhost or over HTTPS.'
+            );
+            return;
+        }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream);
+            streamRef.current = stream;
+
+            const format = pickAudioFormat();
+            formatRef.current = format;
+            const recorder = format?.mime
+                ? new MediaRecorder(stream, { mimeType: format.mime })
+                : new MediaRecorder(stream);
+
             const chunks = [];
+            chunksRef.current = chunks;
 
             recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunks.push(e.data);
+                if (e.data && e.data.size > 0) chunks.push(e.data);
+            };
+
+            recorder.onerror = (event) => {
+                console.error('MediaRecorder error:', event.error);
+                setVoiceError('Recording failed. Please try again.');
+                setIsRecording(false);
+                stopStream();
             };
 
             recorder.onstop = () => {
-                const blob = new Blob(chunks, { type: 'audio/webm' });
-                if (blob.size === 0) return;
+                // Always release the mic, even when the take was empty.
+                stopStream();
+
+                // Use the recorder's actual mimeType so the Blob is labelled
+                // with the container that was really produced.
+                const type = recorder.mimeType || format?.mime || 'audio/webm';
+                const blob = new Blob(chunks, { type });
+
+                if (blob.size === 0) {
+                    setVoiceError('No audio was captured. Check your microphone and try again.');
+                    return;
+                }
+
                 const url = URL.createObjectURL(blob);
                 setAudioBlob(blob);
                 setAudioURL(url);
 
                 const newAudio = new Audio(url);
                 newAudio.onended = () => setIsPlaying(false);
+                newAudio.onerror = () => setVoiceError('This clip could not be played back.');
                 setAudioInstance(newAudio);
-
-                stream.getTracks().forEach(track => track.stop());
             };
 
-            recorder.start();
+            // A timeslice makes the recorder emit chunks as it goes, so a very
+            // short take still yields data instead of an empty blob.
+            recorder.start(250);
             setMediaRecorder(recorder);
             setIsRecording(true);
         } catch (err) {
-            console.error("Mic error:", err);
-            alert("Microphone permission denied or unavailable.");
-            setShowVoiceModal(false);
+            console.error('Mic error:', err);
+            stopStream();
+            setVoiceError(
+                err?.name === 'NotAllowedError'
+                    ? 'Microphone permission was denied. Allow mic access in your browser settings.'
+                    : err?.name === 'NotFoundError'
+                        ? 'No microphone was found on this device.'
+                        : 'Could not start recording. Please try again.'
+            );
         }
     };
 
     /* ── stop recording ─────────────────────────────────────────── */
     const stopRecording = () => {
         if (mediaRecorder && isRecording) {
+            // Flush any buffered audio before the final ondataavailable.
+            try { mediaRecorder.requestData?.(); } catch { /* not fatal */ }
             mediaRecorder.stop();
             setIsRecording(false);
         }
     };
+
+    /* ── playback (handles the rejected play() promise) ─────────── */
+    const togglePlayback = () => {
+        if (!audioInstance) return;
+        if (isPlaying) {
+            audioInstance.pause();
+            setIsPlaying(false);
+            return;
+        }
+        audioInstance.play().then(
+            () => setIsPlaying(true),
+            (err) => {
+                console.error('Playback failed:', err);
+                setVoiceError('Playback was blocked by the browser.');
+                setIsPlaying(false);
+            },
+        );
+    };
+
+    /* ── transcribe the take and drop the text into the query ───── */
+    const useAsText = async () => {
+        if (!audioBlob || transcribing) return;
+        setTranscribing(true);
+        setVoiceError(null);
+        try {
+            const ext = formatRef.current?.ext || 'webm';
+            const file = new File([audioBlob], `recording.${ext}`, { type: audioBlob.type });
+            const { text } = await transcribeApi(file);
+            setQuery(prev => (prev.trim() ? `${prev.trim()} ${text}` : text));
+            closeVoiceModal();
+        } catch (err) {
+            setVoiceError(err.message || 'Could not transcribe that recording.');
+        } finally {
+            setTranscribing(false);
+        }
+    };
+
+    /* ── tidy teardown shared by cancel / escape / success ──────── */
+    const closeVoiceModal = useCallback(() => {
+        setShowVoiceModal(false);
+        setIsPlaying(false);
+        setVoiceError(null);
+        setTranscribing(false);
+        if (audioInstance) audioInstance.pause();
+        setAudioInstance(null);
+        setAudioBlob(null);
+        if (audioURL) { URL.revokeObjectURL(audioURL); setAudioURL(null); }
+        setMediaRecorder(prev => {
+            if (prev && prev.state === 'recording') {
+                try { prev.stop(); } catch { /* already stopped */ }
+            }
+            return null;
+        });
+        setIsRecording(false);
+        stopStream();
+    }, [audioInstance, audioURL, stopStream]);
 
     /* ── drag & drop ────────────────────────────────────────────── */
     const handleDrop = (e) => {
@@ -241,8 +382,8 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                     borderRadius: hasFiles ? '24px' : '999px',
                     border: `1px solid ${borderColor}`,
                     background: 'rgba(255,255,255,0.07)',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
+                    backdropFilter: 'blur(var(--blur-lg))',
+                    WebkitBackdropFilter: 'blur(var(--blur-lg))',
                     boxShadow: glowShadow,
                     transition: 'border-color 0.2s ease, box-shadow 0.2s ease, border-radius 0.3s ease, padding 0.3s ease',
                     overflow: 'visible',
@@ -339,7 +480,7 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                                         position: 'absolute', top: 'calc(100% + 12px)', left: 0,
                                         background: 'rgba(14,15,18,0.96)', border: '1px solid var(--border-strong)',
                                         borderRadius: '14px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '2px',
-                                        backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+                                        backdropFilter: 'blur(var(--blur-xl))', WebkitBackdropFilter: 'blur(var(--blur-xl))',
                                         boxShadow: 'var(--shadow-pop)', zIndex: 1000, minWidth: '190px',
                                     }}
                                 >
@@ -450,7 +591,7 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                         style={{
                             position: 'fixed', inset: 0, zIndex: 9999, display: 'flex',
                             alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)',
-                            backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
+                            backdropFilter: 'blur(var(--blur-sm))', WebkitBackdropFilter: 'blur(var(--blur-sm))',
                         }}
                     >
                         <motion.div
@@ -459,7 +600,7 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                             exit={{ scale: 0.9, opacity: 0 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                             style={{
-                                background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+                                background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(var(--blur-xl))', WebkitBackdropFilter: 'blur(var(--blur-xl))',
                                 border: '1px solid rgba(255,255,255,0.2)', borderRadius: '16px', padding: '32px', width: '320px',
                                 display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
                             }}
@@ -481,90 +622,153 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                                             />
                                         ))}
                                     </div>
-                                    <div style={{ fontSize: '18px', fontWeight: 500, color: '#fff', marginBottom: '32px', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
-                                        {isRecording ? 'Listening...' : 'Connecting...'}
+                                    <div style={{ fontSize: '18px', fontWeight: 500, color: '#fff', marginBottom: voiceError ? '14px' : '32px', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
+                                        {voiceError ? 'Can’t record' : isRecording ? 'Listening…' : 'Connecting…'}
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={stopRecording}
-                                        style={{
-                                            width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)',
-                                            border: '1px solid rgba(255,255,255,0.2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            cursor: isRecording ? 'pointer' : 'not-allowed', boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-                                            transition: 'background 0.2s ease', opacity: isRecording ? 1 : 0.5, position: 'relative'
-                                        }}
-                                        onMouseEnter={e => { if (isRecording) e.currentTarget.style.background = 'rgba(255,255,255,0.2)' }}
-                                        onMouseLeave={e => { if (isRecording) e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
-                                    >
-                                        <motion.div
-                                            animate={{ scale: isRecording ? [1, 1.15, 1] : 1 }}
-                                            transition={{ repeat: Infinity, duration: 1.5 }}
-                                            style={{ width: '16px', height: '16px', background: '#ef4444', borderRadius: '50%', boxShadow: '0 0 12px rgba(239,68,68,0.8)' }}
-                                        />
-                                    </button>
+
+                                    {voiceError && (
+                                        <p style={{
+                                            fontSize: '12.5px', color: 'rgba(252,165,165,0.95)', textAlign: 'center',
+                                            lineHeight: 1.55, marginBottom: '22px',
+                                        }}>
+                                            {voiceError}
+                                        </p>
+                                    )}
+
+                                    {voiceError ? (
+                                        <button
+                                            type="button"
+                                            onClick={closeVoiceModal}
+                                            style={{
+                                                width: '100%', padding: '10px', borderRadius: '12px', background: '#fff',
+                                                border: 'none', color: '#000', fontWeight: 600, cursor: 'pointer',
+                                                fontFamily: 'Inter, system-ui, sans-serif',
+                                            }}
+                                        >
+                                            Close
+                                        </button>
+                                    ) : (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={stopRecording}
+                                                aria-label="Stop recording"
+                                                style={{
+                                                    width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)',
+                                                    border: '1px solid rgba(255,255,255,0.2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    cursor: isRecording ? 'pointer' : 'not-allowed', boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+                                                    transition: 'background 0.2s ease', opacity: isRecording ? 1 : 0.5, position: 'relative'
+                                                }}
+                                                onMouseEnter={e => { if (isRecording) e.currentTarget.style.background = 'rgba(255,255,255,0.2)' }}
+                                                onMouseLeave={e => { if (isRecording) e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+                                            >
+                                                <motion.div
+                                                    animate={{ scale: isRecording ? [1, 1.15, 1] : 1 }}
+                                                    transition={{ repeat: Infinity, duration: 1.5 }}
+                                                    style={{ width: '16px', height: '16px', background: '#ef4444', borderRadius: '50%', boxShadow: '0 0 12px rgba(239,68,68,0.8)' }}
+                                                />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={closeVoiceModal}
+                                                style={{
+                                                    marginTop: '18px', background: 'transparent', border: 'none',
+                                                    color: 'rgba(255,255,255,0.6)', fontSize: '12px', cursor: 'pointer',
+                                                    fontFamily: 'Inter, system-ui, sans-serif',
+                                                }}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </>
+                                    )}
                                 </>
                             ) : (
                                 <>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(255,255,255,0.1)', padding: '12px 20px', borderRadius: '999px', marginBottom: '24px', width: '100%', border: '1px solid rgba(255,255,255,0.15)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(255,255,255,0.1)', padding: '12px 20px', borderRadius: '999px', marginBottom: '18px', width: '100%', border: '1px solid rgba(255,255,255,0.15)' }}>
                                         <button
                                             type="button"
-                                            onClick={() => {
-                                                if (audioInstance) {
-                                                    if (isPlaying) { audioInstance.pause(); setIsPlaying(false); }
-                                                    else { audioInstance.play(); setIsPlaying(true); }
-                                                }
-                                            }}
+                                            onClick={togglePlayback}
+                                            aria-label={isPlaying ? 'Pause' : 'Play recording'}
                                             style={{
                                                 width: '36px', height: '36px', borderRadius: '50%', background: '#fff',
                                                 border: 'none', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                                                flexShrink: 0,
                                             }}
                                         >
                                             <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}`} style={{ fontSize: '14px', marginLeft: isPlaying ? '0' : '2px' }} />
                                         </button>
-                                        <div style={{ flex: 1, fontSize: '14px', color: '#fff', fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
-                                            {isPlaying ? 'Playing...' : 'Tap to play'}
+                                        <div style={{ flex: 1, minWidth: 0, fontSize: '14px', color: '#fff', fontWeight: 500 }}>
+                                            {isPlaying ? 'Playing…' : 'Tap to play'}
+                                            <span style={{ display: 'block', fontSize: '11px', color: 'rgba(255,255,255,0.55)', fontWeight: 400 }}>
+                                                {Math.max(1, Math.round(audioBlob.size / 1024))} KB recorded
+                                            </span>
                                         </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+                                    {voiceError && (
+                                        <p style={{
+                                            width: '100%', fontSize: '12px', color: 'rgba(252,165,165,0.95)',
+                                            marginBottom: '14px', lineHeight: 1.5,
+                                        }}>
+                                            {voiceError}
+                                        </p>
+                                    )}
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+                                        {/* Primary: transcribe to text and drop it in the query box. */}
                                         <button
                                             type="button"
-                                            onClick={() => {
-                                                setShowVoiceModal(false);
-                                                setAudioBlob(null);
-                                                if (audioURL) URL.revokeObjectURL(audioURL);
-                                                if (audioInstance) { audioInstance.pause(); setAudioInstance(null); }
-                                                if (isRecording && mediaRecorder) mediaRecorder.stop();
-                                                setIsPlaying(false);
-                                            }}
+                                            onClick={useAsText}
+                                            disabled={transcribing}
                                             style={{
-                                                flex: 1, padding: '10px', borderRadius: '12px', background: 'transparent',
-                                                border: '1px solid rgba(255,255,255,0.3)', color: '#fff', cursor: 'pointer', transition: 'background 0.2s', fontWeight: 500, fontFamily: 'Inter, system-ui, sans-serif'
+                                                width: '100%', padding: '11px', borderRadius: '12px', background: '#fff',
+                                                border: 'none', color: '#000', fontWeight: 600,
+                                                cursor: transcribing ? 'wait' : 'pointer',
+                                                fontFamily: 'Inter, system-ui, sans-serif', opacity: transcribing ? 0.75 : 1,
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                                             }}
-                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                         >
-                                            Cancel
+                                            {transcribing ? (
+                                                <><i className="fa-solid fa-circle-notch fa-spin" style={{ fontSize: '13px' }} /> Transcribing…</>
+                                            ) : (
+                                                <><i className="fa-solid fa-wand-magic-sparkles" style={{ fontSize: '13px' }} /> Use as text</>
+                                            )}
                                         </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const audioFile = new File([audioBlob], 'recording.webm', { type: 'audio/webm' });
-                                                applyFiles([audioFile]);
-                                                setShowVoiceModal(false);
-                                                setAudioBlob(null);
-                                                if (audioInstance) { audioInstance.pause(); setAudioInstance(null); }
-                                                setIsPlaying(false);
-                                            }}
-                                            style={{
-                                                flex: 1, padding: '10px', borderRadius: '12px', background: '#fff',
-                                                border: 'none', color: '#000', fontWeight: 600, cursor: 'pointer', transition: 'opacity 0.2s', fontFamily: 'Inter, system-ui, sans-serif'
-                                            }}
-                                            onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
-                                            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                                        >
-                                            Use audio
-                                        </button>
+
+                                        <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+                                            <button
+                                                type="button"
+                                                onClick={closeVoiceModal}
+                                                style={{
+                                                    flex: 1, padding: '10px', borderRadius: '12px', background: 'transparent',
+                                                    border: '1px solid rgba(255,255,255,0.3)', color: '#fff', cursor: 'pointer',
+                                                    transition: 'background 0.2s', fontWeight: 500, fontFamily: 'Inter, system-ui, sans-serif',
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                            >
+                                                Cancel
+                                            </button>
+                                            {/* Secondary: keep the clip as a multimodal attachment. */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const ext = formatRef.current?.ext || 'webm';
+                                                    const audioFile = new File([audioBlob], `recording.${ext}`, { type: audioBlob.type });
+                                                    applyFiles([audioFile]);
+                                                    closeVoiceModal();
+                                                }}
+                                                style={{
+                                                    flex: 1, padding: '10px', borderRadius: '12px', background: 'rgba(255,255,255,0.12)',
+                                                    border: '1px solid rgba(255,255,255,0.3)', color: '#fff', fontWeight: 500,
+                                                    cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif',
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
+                                            >
+                                                Attach clip
+                                            </button>
+                                        </div>
                                     </div>
                                 </>
                             )}

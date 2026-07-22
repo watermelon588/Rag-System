@@ -56,6 +56,19 @@ export default function Register() {
                        required minLength={8} autoComplete="new-password" />
                 <SubmitButton busy={busy}>Create account</SubmitButton>
             </form>
+            <p style={{
+                fontSize: 'var(--text-xs)', color: 'var(--text-muted)',
+                marginTop: '16px', textAlign: 'center', lineHeight: 1.6,
+            }}>
+                By creating an account you agree to our{' '}
+                <Link to="/terms" style={{ color: 'var(--accent-text)', textDecoration: 'none' }}>
+                    Terms &amp; Conditions
+                </Link>{' '}
+                and{' '}
+                <Link to="/privacy" style={{ color: 'var(--accent-text)', textDecoration: 'none' }}>
+                    Privacy Policy
+                </Link>.
+            </p>
             <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginTop: '20px', textAlign: 'center' }}>
                 Already registered?{' '}
                 <Link to="/login" style={{ color: 'rgba(61,139,255,0.9)', textDecoration: 'none' }}>

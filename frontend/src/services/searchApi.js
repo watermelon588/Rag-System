@@ -20,3 +20,14 @@ export async function search({ query, files, categories, limit, page, signal } =
     if (page) formData.append('page', String(page));
     return api.postForm('/search', formData, { signal, auth: false });
 }
+
+/**
+ * Transcribe a recorded audio clip to text (Whisper, server-side).
+ * @param {File|Blob} file
+ * @returns {Promise<{text: string, duration_ms: number}>}
+ */
+export async function transcribe(file, { signal } = {}) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.postForm('/search/transcribe', formData, { signal, auth: false });
+}

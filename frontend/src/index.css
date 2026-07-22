@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 /* ============================================================================
@@ -7,6 +7,27 @@
    See design.md for the full rationale and usage rules.
    ========================================================================== */
 :root {
+  /* ==========================================================================
+     ATMOSPHERE — the two global knobs for background darkness & glass blur.
+     Tweak ONLY these; every surface in the app derives from them.
+     ========================================================================== */
+
+  /* ── 1. BACKGROUND DARKNESS ──────────────────────────────────────────
+     Higher = darker. Consumed by AppBackground.jsx.                      */
+  --bg-video-opacity: 0.55;   /* video brightness  (0 = hidden, 1 = full)  */
+  --bg-dim: 0.55;             /* full-screen dark wash over the video      */
+  --bg-dim-bottom: 0.40;      /* extra darkening at the bottom edge        */
+  --bg-vignette: 0.08;        /* accent glow strength at the top           */
+
+  /* ── 2. GLASS BACKDROP BLUR ──────────────────────────────────────────
+     Change --blur-scale alone to scale EVERY frosted surface at once;
+     the four steps below keep their relative hierarchy.                  */
+  --blur-scale: 1;
+  --blur-sm: calc(4px * var(--blur-scale));    /* modal scrims             */
+  --blur-glass: calc(12px * var(--blur-scale));/* cards, navbar, footer    */
+  --blur-lg: calc(20px * var(--blur-scale));   /* search bar               */
+  --blur-xl: calc(24px * var(--blur-scale));   /* popovers, menus          */
+
   /* Base / background */
   --bg: #000000;
   --bg-elevated: #07080a;
@@ -43,6 +64,9 @@
   /* Typography */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  /* Brand/display face — matches the rounded "Neuron" wordmark.
+     Reserved for the app name only; everything else stays on Inter. */
+  --font-brand: 'Fredoka', 'Inter', system-ui, sans-serif;
 
   --text-xs: 11px;
   --text-sm: 13px;
@@ -150,4 +174,83 @@ button {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ============================================================================
+   RESPONSIVE — token overrides.
+   Because every surface is built from the tokens above, re-declaring them at a
+   breakpoint rescales the whole app at once (type, nav height, gutters) with
+   no per-component media queries.
+   ========================================================================== */
+
+/* Tablet / small laptop */
+@media (max-width: 900px) {
+  :root {
+    --text-2xl: 26px;
+    --text-3xl: clamp(32px, 7vw, 48px);
+  }
+}
+
+/* Phone */
+@media (max-width: 640px) {
+  :root {
+    --nav-height: 56px;
+
+    --text-xs: 11px;
+    --text-sm: 12.5px;
+    --text-base: 14px;
+    --text-lg: 16px;
+    --text-xl: 19px;
+    --text-2xl: 22px;
+    --text-3xl: clamp(30px, 9vw, 40px);
+
+    --radius-xl: 18px;
+    /* Heavy blur is expensive on mobile GPUs and reads as mud on a small
+       screen — dial the whole glass system back a notch. */
+    --blur-scale: 0.7;
+  }
+
+  /* The hero aura is sized for desktop; keep it from bleeding off-canvas. */
+  .heading-glow::before {
+    inset: -20px -24px;
+  }
+}
+
+/* ── Layout helpers used by the pages ─────────────────────────────────── */
+
+/* Standard page gutter that tightens on small screens. */
+.page-gutter {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+@media (max-width: 640px) {
+  .page-gutter {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* Any element that must never force the page to scroll sideways. */
+.no-overflow {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Collapse a 2-up grid to a single column on phones. */
+@media (max-width: 640px) {
+  .stack-on-mobile {
+    grid-template-columns: 1fr !important;
+    display: grid !important;
+  }
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
+
+/* Global guard: nothing should ever cause a horizontal scrollbar. */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
 }

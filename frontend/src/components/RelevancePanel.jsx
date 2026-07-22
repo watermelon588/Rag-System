@@ -7,11 +7,7 @@ const CONFIDENCE_COLORS = {
     low: { fg: 'rgba(248,113,113,0.95)', bg: 'rgba(248,113,113,0.10)', border: 'rgba(248,113,113,0.30)' },
 };
 
-const SIGNAL_LABELS = {
-    semantic_similarity: 'Semantic match',
-    bm25_keyword: 'Keyword (BM25)',
-    provider_position: 'Source ranking',
-};
+import { SIGNAL_LABELS } from '../lib/signals';
 
 export function ConfidenceBadge({ level }) {
     const colors = CONFIDENCE_COLORS[level] || CONFIDENCE_COLORS.low;

@@ -44,6 +44,15 @@ class SearchHistoryEntry:
 
 
 @dataclass
+class Feedback:
+    id: str
+    message: str
+    email: str | None = None
+    owner_id: str | None = None          # set when submitted while signed in
+    created_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass
 class SavedResult:
     id: str
     owner_id: str

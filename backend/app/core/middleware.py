@@ -49,12 +49,66 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Helmet-equivalent response headers.
+
+    (`helmet` is Express-only; this is the same header set applied natively
+    for Starlette/FastAPI.)
+
+    The API returns JSON, so the CSP is locked down to `default-src 'none'`
+    — nothing should ever be loaded or executed from an API response. The
+    interactive docs are the one exception: Swagger UI pulls its bundle from
+    a CDN, so those paths get a policy that permits it.
+    """
+
+    # Paths that render HTML and therefore need a usable (looser) policy.
+    _DOC_PATHS = ("/docs", "/redoc", "/openapi.json")
+
+    _API_CSP = (
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    )
+    _DOCS_CSP = (
+        "default-src 'self'; "
+        "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+        "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+        "img-src 'self' data: https://fastapi.tiangolo.com; "
+        "font-src 'self' https://cdn.jsdelivr.net; "
+        "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"
+    )
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
+        settings = get_settings()
+
+        is_docs = request.url.path.startswith(self._DOC_PATHS)
+        response.headers.setdefault(
+            "Content-Security-Policy", self._DOCS_CSP if is_docs else self._API_CSP
+        )
+
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
-        response.headers.setdefault("Permissions-Policy", "camera=(), geolocation=()")
+        # Modern guidance is to disable the legacy auditor rather than enable it.
+        response.headers.setdefault("X-XSS-Protection", "0")
+        response.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-site")
+        response.headers.setdefault("Origin-Agent-Cluster", "?1")
+        # Microphone stays available to our own origin (the voice search
+        # button); camera and geolocation are switched off entirely.
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), geolocation=(), microphone=(self), interest-cohort=()",
+        )
+        # Don't advertise the server implementation.
+        response.headers["Server"] = "neuron"
+
+        # HSTS is only meaningful over TLS, and pinning it in development
+        # would poison localhost for every other project on the machine.
+        if settings.is_production:
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
         return response
 
 

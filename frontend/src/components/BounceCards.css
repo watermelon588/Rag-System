@@ -1,0 +1,42 @@
+/* BounceCards — card chrome uses the shared design tokens (see design.md),
+   keeping the gallery monochrome and consistent with the rest of the app. */
+
+.bounceCardsContainer {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.bounceCardsContainer .card {
+  position: absolute;
+  /* Size is driven by the `cardSize` prop (see Gallery's GALLERY.cardSize). */
+  width: var(--bounce-card-size, 200px);
+  aspect-ratio: 1;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+  will-change: transform;
+}
+
+.bounceCardsContainer .card:hover {
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-pop);
+}
+
+.bounceCardsContainer .card .image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bounceCardsContainer .card {
+    transition: none;
+  }
+}

@@ -25,6 +25,7 @@ CHAT_SESSIONS = "chat_sessions"
 CHAT_MESSAGES = "chat_messages"
 SEARCH_HISTORY = "search_history"
 SAVED_RESULTS = "saved_results"
+FEEDBACK = "feedback"
 
 
 @lru_cache
@@ -71,6 +72,7 @@ def init_indexes() -> None:
     db[SAVED_RESULTS].create_index(
         [("owner_id", ASCENDING), ("url", ASCENDING)], name="owner_url"
     )
+    db[FEEDBACK].create_index([("created_at", DESCENDING)], name="recent")
     logger.info("MongoDB indexes ensured on '%s'", get_settings().mongodb_db_name)
 
 

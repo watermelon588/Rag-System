@@ -9,12 +9,27 @@ from fastapi import APIRouter, Depends
 from app.api.deps import CurrentUser, get_saved_result_repo, get_search_history_repo
 from app.db.models import SavedResult, new_id
 from app.db.repositories import SavedResultRepository, SearchHistoryRepository
-from app.schemas.auth import SaveResultRequest, SavedResultItem, SearchHistoryItem
+from app.schemas.auth import (
+    AvatarUploadSignature,
+    SaveResultRequest,
+    SavedResultItem,
+    SearchHistoryItem,
+)
+from app.services import cloudinary_sign
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
 HistoryRepo = Annotated[SearchHistoryRepository, Depends(get_search_history_repo)]
 SavedRepo = Annotated[SavedResultRepository, Depends(get_saved_result_repo)]
+
+
+# ------------------------------------------------------------- avatar upload
+
+@router.post("/avatar-signature", response_model=AvatarUploadSignature)
+def avatar_upload_signature(user: CurrentUser) -> AvatarUploadSignature:
+    """Mint a one-shot signature so the browser can upload an avatar image
+    directly to Cloudinary. The API secret stays on the server."""
+    return AvatarUploadSignature(**cloudinary_sign.build_upload_signature(user.id))
 
 
 # ------------------------------------------------------------------ history

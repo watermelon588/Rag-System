@@ -7,6 +7,7 @@ import RelevancePanel, { ConfidenceBadge } from '../components/RelevancePanel';
 import { search as searchApi } from '../services/searchApi';
 import { getPendingFiles, clearPendingFiles } from '../fileStore';
 import { saveResult as saveResultApi } from '../services/profileApi';
+import ImageDetailPanel from '../components/ImageDetailPanel';
 import { useAuth } from '../context/AuthContext';
 
 /* ─── Animation variants ─────────────────────────────────────── */
@@ -132,7 +133,7 @@ function WebCard({ item }) {
                 display: 'block', position: 'relative', width: '100%',
                 padding: '20px', borderRadius: '12px',
                 border: '1px solid rgba(255,255,255,0.09)',
-                background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(12px)',
+                background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(var(--blur-glass))',
             }}>
             <a href={item.url} target="_blank" rel="noopener noreferrer"
                style={{ textDecoration: 'none', display: 'block' }}>
@@ -165,13 +166,18 @@ function WebCard({ item }) {
 }
 
 /* ─── Image card ─────────────────────────────────────────────── */
-function ImageCard({ item }) {
+function ImageCard({ item, onOpen }) {
     const [imgError, setImgError] = useState(false);
     return (
         <motion.div variants={itemVariant} whileHover={{ y: -4, scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 280, damping: 22 }}
+            role="button"
+            tabIndex={0}
+            aria-label={`View ${item.title || 'image'} full size`}
+            onClick={onOpen}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(); } }}
             style={{
-                borderRadius: '12px', overflow: 'hidden',
+                borderRadius: '12px', overflow: 'hidden', cursor: 'pointer',
                 border: '1px solid rgba(255,255,255,0.09)',
                 background: 'rgba(255,255,255,0.04)',
             }}>
@@ -319,7 +325,7 @@ function InterpretationBanner({ interpretation, summary, confidence, metadata })
             style={{
                 marginBottom: '24px', padding: '16px 18px', borderRadius: '12px',
                 border: '1px solid rgba(61,139,255,0.18)',
-                background: 'rgba(61,139,255,0.05)', backdropFilter: 'blur(12px)',
+                background: 'rgba(61,139,255,0.05)', backdropFilter: 'blur(var(--blur-glass))',
             }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
                 <span style={{
@@ -447,6 +453,7 @@ export default function Search() {
     const [page, setPage] = useState(1);
     const [error, setError] = useState(null);
     const [data, setData] = useState(null);
+    const [openImageIndex, setOpenImageIndex] = useState(null);
     const requestKeyRef = useRef(null);
 
     const fileLabel = filesMeta.length === 1
@@ -476,6 +483,7 @@ export default function Search() {
         setData(null);
         setActiveTab('all');
         setPage(1);
+        setOpenImageIndex(null);
 
         searchApi({ query, files, page: 1 })
             .then(response => {
@@ -576,7 +584,7 @@ export default function Search() {
                             display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '14px',
                         }}>
                             {(show === 'all' ? results.images.slice(0, LIMIT + 1) : results.images).map((item, i) => (
-                                <ImageCard key={i} item={item} />
+                                <ImageCard key={i} item={item} onOpen={() => setOpenImageIndex(i)} />
                             ))}
                         </motion.div>
                     </section>
@@ -671,8 +679,13 @@ export default function Search() {
                                     <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.30)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 500, marginBottom: '5px' }}>
                                         Results for
                                     </p>
-                                    <h1 style={{ fontSize: '22px', fontWeight: 600, color: 'rgba(255,255,255,0.90)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        "{displayQuery}"
+                                    <h1 style={{
+                                        fontSize: 'var(--text-lg)', fontWeight: 400,
+                                        color: 'var(--text-secondary)',
+                                        letterSpacing: '0',
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    }}>
+                                        {displayQuery}
                                     </h1>
                                 </div>
                                 {!loading && data && (
@@ -710,6 +723,18 @@ export default function Search() {
                     )}
                 </div>
             </div>
+
+            {/* Full-size image viewer with credits, description and ranking. */}
+            <ImageDetailPanel
+                item={openImageIndex === null ? null : results.images[openImageIndex] ?? null}
+                onClose={() => setOpenImageIndex(null)}
+                onPrev={openImageIndex > 0 ? () => setOpenImageIndex(i => i - 1) : undefined}
+                onNext={
+                    openImageIndex !== null && openImageIndex < results.images.length - 1
+                        ? () => setOpenImageIndex(i => i + 1)
+                        : undefined
+                }
+            />
         </div>
     );
 }

@@ -103,6 +103,13 @@ class SearchMetadata(BaseModel):
     )
 
 
+class TranscriptionResponse(BaseModel):
+    """Speech-to-text result for the search bar's voice button."""
+
+    text: str = Field(description="Transcribed speech")
+    duration_ms: float = Field(default=0.0, description="Server-side processing time")
+
+
 class SearchResponse(BaseModel):
     interpretation: QueryInterpretation
     results: dict[ResultCategory, list[SearchResultItem]]

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------ app
-    app_name: str = "Multimodal AI Retrieval Platform"
+    app_name: str = "Neuron"
     environment: str = "development"  # development | production | test
     debug: bool = True
     api_v1_prefix: str = "/api/v1"
@@ -59,15 +59,26 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------- storage
     storage_dir: Path = BACKEND_DIR / "storage"
 
+    # ------------------------------------------------------------ cloudinary
+    # Avatar images are uploaded straight from the browser to Cloudinary using
+    # a short-lived signature minted here, so the API secret never reaches the
+    # client and image bytes never transit this server.
+    cloudinary_cloud_name: str = ""
+    cloudinary_api_key: str = ""
+    cloudinary_api_secret: str = ""
+    cloudinary_folder: str = "neuron/avatars"
+    # Largest avatar accepted, enforced client-side and by Cloudinary.
+    cloudinary_max_image_mb: int = 5
+
     # ----------------------------------------------------------- database (MongoDB)
     # Point this at your MongoDB Atlas SRV connection string, e.g.
     #   mongodb+srv://<user>:<pass>@cluster0.xxxx.mongodb.net/?retryWrites=true&w=majority
-    mongodb_uri: str = "mongodb://localhost:27017"
+    mongodb_uri: str 
     mongodb_db_name: str = "multimodal_ai"
     mongodb_timeout_ms: int = 8000
 
     # ------------------------------------------------------ search providers
-    serper_api_key: str = ""
+    serper_api_key: str 
     serper_base_url: str = "https://google.serper.dev"
     search_provider_timeout_seconds: int = 15
     search_default_limit: int = 10
@@ -95,7 +106,7 @@ class Settings(BaseSettings):
     # Generation provider selection (see app.ml.generation): if GROQ_API_KEY is
     # set the platform uses Groq's fast hosted models; otherwise it falls back
     # to a local model, then to extractive (no-LLM) answers.
-    groq_api_key: str = ""
+    groq_api_key: str 
     groq_model: str = "llama-3.1-8b-instant"   # very fast on Groq's LPUs
     groq_timeout_seconds: int = 30
     # Smaller default local model => noticeably faster CPU inference than 1.5B.
@@ -115,6 +126,30 @@ class Settings(BaseSettings):
     rag_min_score: float = 0.15         # cosine-similarity floor for grounding
     chat_history_window: int = 6        # prior messages fed to generation
     web_augmentation_threshold: float = 0.30  # below this, offer web search
+
+    # ------------------------------------------------------ mail (feedback)
+    # Feedback submitted from the site footer is emailed here. For Gmail you
+    # MUST use an App Password (Google Account → Security → 2-Step
+    # Verification → App passwords), not your normal login password.
+    enable_email: bool = True
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587                 # 587 = STARTTLS, 465 = implicit SSL
+    smtp_user: str = ""                  # the Gmail address that sends
+    smtp_password: str = ""              # the 16-character App Password
+    smtp_timeout_seconds: int = 20
+    feedback_to_email: str = ""          # where feedback lands (your inbox)
+    mail_from_name: str = "Neuron"
+
+    @property
+    def email_configured(self) -> bool:
+        """Email only sends when a sender, password and recipient all exist."""
+        return bool(
+            self.enable_email
+            and self.smtp_host
+            and self.smtp_user
+            and self.smtp_password
+            and (self.feedback_to_email or self.smtp_user)
+        )
 
     # -------------------------------------------------------------- logging
     log_level: str = "INFO"
