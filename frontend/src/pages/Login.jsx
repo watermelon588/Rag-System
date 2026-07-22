@@ -70,13 +70,20 @@ export default function Login() {
     const { login } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
 
     async function handleSubmit(e) {
         e.preventDefault();
+        // Read straight from the form so browser autofill (which doesn't fire
+        // React onChange) is always captured.
+        const fd = new FormData(e.currentTarget);
+        const email = (fd.get('email') || '').toString().trim();
+        const password = (fd.get('password') || '').toString();
+        if (!email || !password) {
+            setError('Please enter your email and password');
+            return;
+        }
         setBusy(true);
         setError(null);
         try {
@@ -93,10 +100,10 @@ export default function Login() {
         <AuthShell title="Welcome back" subtitle="Sign in to access your documents and chats">
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <FormError message={error} />
-                <input style={inputStyle} type="email" placeholder="Email" value={email}
-                       onChange={e => setEmail(e.target.value)} required autoComplete="email" />
-                <input style={inputStyle} type="password" placeholder="Password" value={password}
-                       onChange={e => setPassword(e.target.value)} required autoComplete="current-password" />
+                <input style={inputStyle} type="email" name="email" placeholder="Email"
+                       required autoComplete="email" />
+                <input style={inputStyle} type="password" name="password" placeholder="Password"
+                       required autoComplete="current-password" />
                 <SubmitButton busy={busy}>Sign in</SubmitButton>
             </form>
             <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginTop: '20px', textAlign: 'center' }}>

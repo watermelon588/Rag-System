@@ -20,6 +20,8 @@ from app.db.repositories import (
     ChatRepository,
     ChunkRepository,
     DocumentRepository,
+    SavedResultRepository,
+    SearchHistoryRepository,
     UserRepository,
 )
 from app.services.auth import AuthService
@@ -58,6 +60,14 @@ def get_chat_repo(db: Db) -> ChatRepository:
     return ChatRepository(db)
 
 
+def get_search_history_repo(db: Db) -> SearchHistoryRepository:
+    return SearchHistoryRepository(db)
+
+
+def get_saved_result_repo(db: Db) -> SavedResultRepository:
+    return SavedResultRepository(db)
+
+
 # ----------------------------------------------------------------- current user
 
 def get_current_user(
@@ -82,6 +92,23 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_optional_user(
+    request: Request,
+    users: Annotated[UserRepository, Depends(get_user_repo)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> User | None:
+    """Like :func:`get_current_user` but returns ``None`` instead of raising
+    when no valid session is present — used by endpoints (e.g. search) that
+    are public but personalise behaviour (history) for signed-in users."""
+    try:
+        return get_current_user(request, users, credentials)
+    except AuthenticationError:
+        return None
+
+
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 
 
 # -------------------------------------------------------------------- services

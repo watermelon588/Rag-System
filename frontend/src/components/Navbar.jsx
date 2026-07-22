@@ -28,9 +28,9 @@ export default function Navbar() {
                 height: 'var(--nav-height)',
                 display: 'flex',
                 alignItems: 'center',
-                background: 'rgba(6, 7, 10, 0.55)',
-                backdropFilter: 'blur(20px)',
-                WebkitBackdropFilter: 'blur(20px)',
+                background: 'rgba(6, 7, 10, 0.38)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
                 borderBottom: '1px solid var(--border)',
             }}
         >
@@ -103,9 +103,30 @@ export default function Navbar() {
                 {/* Auth area */}
                 {user ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>
-                            {user.display_name}
-                        </span>
+                        <Link
+                            to="/profile"
+                            title="Your profile"
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '9px',
+                                textDecoration: 'none', color: 'rgba(255,255,255,0.75)',
+                                transition: 'color 0.2s ease',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.75)'}
+                        >
+                            <span style={{
+                                width: '28px', height: '28px', borderRadius: '50%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                background: user.avatar_url ? 'transparent' : 'var(--accent-soft)',
+                                border: '1px solid var(--accent-border)', overflow: 'hidden',
+                                fontSize: '12px', fontWeight: 700, color: 'var(--accent-text)',
+                            }}>
+                                {user.avatar_url
+                                    ? <img src={user.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    : (user.display_name?.[0] || '?').toUpperCase()}
+                            </span>
+                            <span style={{ fontSize: '13px' }}>{user.display_name}</span>
+                        </Link>
                         <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.97 }}

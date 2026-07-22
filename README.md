@@ -2,7 +2,7 @@
 
 A production-grade AI retrieval platform with two capabilities:
 
-- **Phase 1 — Intelligent Multimodal Search**: search the live web with text, images, audio, or any combination. Input is understood *semantically* (transcription, captioning, LLM query refinement), results are re-ranked by a **hybrid of dense embeddings and Okapi BM25 keyword scoring**, paginated ("load more"), and **every result carries a transparent relevance analysis** — score, confidence level, contributing signals and a plain-language explanation.
+- **Phase 1 — Genuine Hybrid Multimodal Search**: search the live web with text and/or *any combination* of files — `image + query`, `audio + image + query`, and so on. Every input is fused into **one CLIP cross-modal query vector** (the picture's actual pixels, not a lossy caption) *plus* a keyword query. Image and video results are then **re-ranked by real visual similarity** — the query image is compared to each result's thumbnail in CLIP space — blended with dense-embedding, Okapi BM25 keyword and provider-position signals. Results are paginated ("load more"), and **every result carries a transparent relevance analysis** — score, confidence level, contributing signals (including `visual_similarity`) and a plain-language explanation.
 - **Phase 2 — Intelligent Document Chat**: upload documents (PDF, DOCX, TXT, Markdown, CSV, Excel, HTML, XML, JSON, source code, …) and converse with them. Answers are **grounded in retrieved document context** with numbered citations that navigate back to the exact source location (page, section, line range). Weak document context can be augmented with live web search.
 
 ---
@@ -54,10 +54,11 @@ magnetic cursor) is documented separately in [design.md](design.md).
 **Key design decisions**
 
 - **Lazy ML loading** — the API starts instantly; models load on first use. A missing optional dependency disables one capability instead of crashing the platform (`GET /api/v1/system/capabilities` reports live status).
-- **Graceful degradation everywhere** — no embedder? Ranking falls back to BM25 keyword signals and the response is flagged `degraded`. No LLM? Document chat returns cited extractive answers, and query refinement is skipped. A failing provider category returns empty rather than failing the search.
+- **Pluggable, fast text generation** — chat and query-refinement resolve through a provider chain (`ml/generation.py`): **Groq** hosted models (sub-second) when `GROQ_API_KEY` is set → a small local model → extractive fallback. Set the key and document chat replies in seconds instead of minutes on CPU.
+- **Graceful degradation everywhere** — no embedder? Ranking falls back to BM25 keyword signals and the response is flagged `degraded`. No generator? Document chat returns cited extractive answers, and query refinement is skipped. A failing provider category returns empty rather than failing the search.
 - **Interfaces over implementations** — `VectorStore` and `SearchProvider` are abstract; FAISS and Serper are swappable details. Persistence is a thin **repository** layer over MongoDB, so services never touch the driver directly.
 - **Search transparency as a contract** — the API schema *requires* per-result signals, confidence and explanations; unexplained ranked lists are structurally impossible.
-- **Location-aware RAG** — parsers preserve pages, headings, line ranges and char offsets; chunking keeps them; citations expose them, so the UI can jump to the exact origin of every answer.
+- **Location-aware RAG** — parsers preserve pages, headings, line ranges and char offsets; chunking keeps them; citations expose them. In the chat UI, clicking a citation opens a side-by-side **document preview** scrolled to and highlighting the exact source chunk.
 
 ## API overview (v1)
 
@@ -66,8 +67,11 @@ magnetic cursor) is documented separately in [design.md](design.md).
 | System | `GET /api/v1/system/health` | Liveness |
 | | `GET /api/v1/system/capabilities` | Model/provider/feature availability |
 | Auth | `POST /api/v1/auth/register` · `login` · `refresh` | JWT access + refresh tokens |
-| | `GET /api/v1/auth/me` | Current profile |
-| Search | `POST /api/v1/search` | Multimodal search (text and/or file, category filter, limit) |
+| | `GET` · `PATCH /api/v1/auth/me` | View / edit profile (display name, bio, avatar) |
+| | `POST /api/v1/auth/change-password` · `GET /api/v1/auth/me/stats` | Change password · usage stats |
+| Profile | `GET/DELETE /api/v1/profile/history` · `.../{id}` | Search history (list, clear, delete) |
+| | `GET/POST /api/v1/profile/saved` · `DELETE .../{id}` | Saved results (bookmark, list, remove) |
+| Search | `POST /api/v1/search` | Multimodal search (text and/or **multiple files**, category filter, limit) |
 | Documents | `POST /api/v1/documents` | Upload + index a document |
 | | `GET /api/v1/documents` / `{id}` / `{id}/chunks` | List, inspect, browse chunk locations |
 | | `POST /api/v1/documents/query` | Semantic search inside your documents |

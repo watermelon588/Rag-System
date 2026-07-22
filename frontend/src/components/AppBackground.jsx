@@ -8,7 +8,7 @@
 export default function AppBackground() {
     return (
         <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
-            {/* Cinematic video */}
+            {/* Cinematic video — brighter so the motion reads clearly */}
             <video
                 src="/1.mp4"
                 autoPlay
@@ -18,21 +18,21 @@ export default function AppBackground() {
                 style={{
                     position: 'absolute', inset: 0,
                     width: '100vw', height: '100vh',
-                    objectFit: 'cover', opacity: 0.26,
+                    objectFit: 'cover', opacity: 0.55,
                 }}
             />
-            {/* Dark wash for legibility */}
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.74)' }} />
+            {/* Light dark wash — just enough for text legibility */}
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.42)' }} />
             {/* Accent vignette from the top */}
             <div style={{
                 position: 'absolute', inset: 0,
                 background:
-                    'radial-gradient(120% 60% at 50% -10%, rgba(var(--accent-rgb),0.10), transparent 60%)',
+                    'radial-gradient(120% 60% at 50% -10%, rgba(var(--accent-rgb),0.08), transparent 60%)',
             }} />
-            {/* Subtle grain/edge darkening at the bottom */}
+            {/* Subtle edge darkening at the bottom for card legibility */}
             <div style={{
                 position: 'absolute', inset: 0,
-                background: 'linear-gradient(to bottom, transparent 55%, rgba(0,0,0,0.55))',
+                background: 'linear-gradient(to bottom, transparent 60%, rgba(0,0,0,0.40))',
             }} />
         </div>
     );

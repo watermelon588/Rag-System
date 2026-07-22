@@ -89,12 +89,14 @@ class DocumentChatService:
         top_similarity = chunks[0].similarity if chunks else 0.0
         grounded = bool(usable)
 
+        # When the user asks for web search, always surface ranked web
+        # resources alongside the grounded answer (not only when the document
+        # context is weak) — that's what "more resources" means here.
         web_results = None
         web_augmented = False
         if use_web_search and self._web_provider and self._web_provider.is_configured():
-            if not grounded or top_similarity < settings.web_augmentation_threshold:
-                web_results = self._fetch_web_context(question)
-                web_augmented = bool(web_results)
+            web_results = self._fetch_web_context(question)
+            web_augmented = bool(web_results)
 
         if grounded:
             answer, citations = self._generate_answer(session, question, usable)
@@ -222,11 +224,26 @@ class DocumentChatService:
         return text if len(text) <= limit else text[: limit - 1] + "…"
 
     def _fetch_web_context(self, question: str) -> list[dict] | None:
+        from app.services.search.ranking import rank_results
+
         try:
-            results = self._web_provider.search(question, [ResultCategory.WEB], limit=5)
+            results = self._web_provider.search(question, [ResultCategory.WEB], limit=6)
+            candidates = results.get(ResultCategory.WEB, [])
+            if not candidates:
+                return None
+            # Re-rank by relevance to the question so the chat shows the best
+            # resources first, each with a relevance score (a recommendation).
+            scored, _degraded = rank_results(question, candidates)
             return [
-                {"title": item.title, "url": item.url, "snippet": item.snippet}
-                for item in results.get(ResultCategory.WEB, [])
+                {
+                    "rank": index + 1,
+                    "title": item.result.title,
+                    "url": item.result.url,
+                    "snippet": item.result.snippet,
+                    "source": item.result.source,
+                    "relevance": round(item.final_score, 3),
+                }
+                for index, item in enumerate(scored)
             ] or None
         except Exception as exc:  # noqa: BLE001 — augmentation is best-effort
             logger.warning("Web augmentation failed: %s", exc)

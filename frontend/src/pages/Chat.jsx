@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/Navbar';
 import DocumentPreview from '../components/DocumentPreview';
@@ -108,6 +108,7 @@ function WelcomeMessage({ scoped }) {
 /* ═══ MAIN ════════════════════════════════════════════════════════ */
 export default function Chat() {
     const location = useLocation();
+    const navigate = useNavigate();
     const scopedDocumentIds = location.state?.documentIds || null;
     const startNew = location.state?.startNew || (scopedDocumentIds?.length > 0);
 
@@ -119,6 +120,7 @@ export default function Chat() {
     const [error, setError] = useState(null);
     const [webResults, setWebResults] = useState(null);
     const [preview, setPreview] = useState(null);   // { documentId, chunkId, documentName }
+    const [lastAsked, setLastAsked] = useState('');
     const [showSessions, setShowSessions] = useState(false);
     const [uploadNote, setUploadNote] = useState(null);
     const [uploading, setUploading] = useState(false);
@@ -228,6 +230,7 @@ export default function Chat() {
         setError(null);
         setWebResults(null);
         setQuestion('');
+        setLastAsked(q);
         setActiveSession(prev => ({
             ...prev,
             messages: [...prev.messages, { id: `tmp-${Date.now()}`, role: 'user', content: q }],
@@ -354,16 +357,49 @@ export default function Chat() {
                             )}
 
                             {webResults?.length > 0 && (
-                                <div style={{ padding: '14px', borderRadius: '12px', border: '1px solid var(--accent-border)', background: 'var(--accent-soft)' }}>
-                                    <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent-text)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                        Live web context
-                                    </p>
-                                    {webResults.map((result, index) => (
-                                        <a key={index} href={result.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none', marginBottom: '8px' }}>
-                                            <p style={{ fontSize: '13px', color: 'var(--accent-text)', fontWeight: 600 }}>{result.title}</p>
-                                            <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>{result.snippet}</p>
-                                        </a>
-                                    ))}
+                                <div style={{ padding: '16px', borderRadius: '14px', border: '1px solid var(--accent-border)', background: 'var(--accent-soft)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                                        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent-text)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                            🌐 Recommended web resources
+                                        </p>
+                                        <button
+                                            onClick={() => navigate('/search', { state: { query: lastAsked, at: Date.now() } })}
+                                            style={{
+                                                fontSize: '12px', fontWeight: 600, color: 'var(--accent-text)',
+                                                background: 'transparent', border: '1px solid var(--accent-border)',
+                                                borderRadius: 'var(--radius-pill)', padding: '5px 12px', cursor: 'pointer',
+                                            }}>
+                                            🔎 Open full web search →
+                                        </button>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        {webResults.map((result, index) => (
+                                            <a key={index} href={result.url} target="_blank" rel="noopener noreferrer"
+                                               style={{ display: 'flex', gap: '10px', textDecoration: 'none', alignItems: 'flex-start' }}>
+                                                <span style={{
+                                                    flexShrink: 0, width: '20px', height: '20px', borderRadius: '6px',
+                                                    background: 'var(--accent)', color: '#001', fontSize: '11px', fontWeight: 700,
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '2px',
+                                                }}>
+                                                    {result.rank ?? index + 1}
+                                                </span>
+                                                <div style={{ minWidth: 0 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                        <p style={{ fontSize: '13px', color: 'var(--accent-text)', fontWeight: 600 }}>{result.title}</p>
+                                                        {typeof result.relevance === 'number' && (
+                                                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '1px 7px' }}>
+                                                                {Math.round(result.relevance * 100)}% match
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {result.source && (
+                                                        <p style={{ fontSize: '11px', color: 'var(--text-faint)', fontFamily: 'var(--font-mono)', marginTop: '1px' }}>{result.source}</p>
+                                                    )}
+                                                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: '2px' }}>{result.snippet}</p>
+                                                </div>
+                                            </a>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 

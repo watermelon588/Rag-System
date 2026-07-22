@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Documents from './pages/Documents';
 import Chat from './pages/Chat';
+import Profile from './pages/Profile';
 import CustomCursor from './components/CustomCursor';
 import AppBackground from './components/AppBackground';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -32,6 +33,10 @@ function App() {
             <Route
               path="/chat"
               element={<ProtectedRoute><Chat /></ProtectedRoute>}
+            />
+            <Route
+              path="/profile"
+              element={<ProtectedRoute><Profile /></ProtectedRoute>}
             />
           </Routes>
         </div>

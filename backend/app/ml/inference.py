@@ -32,15 +32,79 @@ def embed_text(text: str) -> list[float]:
 
 
 def embed_image(image_path: str | Path) -> list[float]:
-    import torch
     from PIL import Image
 
+    return _clip_encode_image(Image.open(image_path))
+
+
+def embed_image_bytes(data: bytes) -> list[float]:
+    """CLIP-embed an in-memory image (e.g. a downloaded result thumbnail)."""
+    import io
+
+    from PIL import Image
+
+    return _clip_encode_image(Image.open(io.BytesIO(data)))
+
+
+def embed_text_clip(text: str) -> list[float]:
+    """Embed text into CLIP's *shared* image/text space, so the vector is
+    directly comparable to :func:`embed_image` results. This is what makes
+    genuine cross-modal (image ↔ text) retrieval possible, as opposed to the
+    text-only :func:`embed_text` sentence embedding used for lexical re-ranking."""
+    import clip
+    import torch
+
     bundle = registry.get(loaders.CLIP)
-    image = bundle["preprocess"](Image.open(image_path)).unsqueeze(0).to(bundle["device"])
+    # CLIP's context length is 77 tokens; truncate defensively so long
+    # transcripts/captions never raise inside tokenize().
+    tokens = clip.tokenize([text[:300]], truncate=True).to(bundle["device"])
     with torch.no_grad():
-        embedding = bundle["model"].encode_image(image)
+        embedding = bundle["model"].encode_text(tokens)
         embedding = embedding / embedding.norm(dim=-1, keepdim=True)
     return embedding[0].cpu().numpy().tolist()
+
+
+def _clip_encode_image(image) -> list[float]:
+    import torch
+
+    bundle = registry.get(loaders.CLIP)
+    tensor = bundle["preprocess"](image.convert("RGB")).unsqueeze(0).to(bundle["device"])
+    with torch.no_grad():
+        embedding = bundle["model"].encode_image(tensor)
+        embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+    return embedding[0].cpu().numpy().tolist()
+
+
+# ------------------------------------------------------- graceful CLIP variants
+
+def try_embed_text_clip(text: str) -> list[float] | None:
+    return _try_clip(lambda: embed_text_clip(text))
+
+
+def try_embed_image(image_path: str | Path) -> list[float] | None:
+    return _try_clip(lambda: embed_image(image_path))
+
+
+def try_embed_image_bytes(data: bytes) -> list[float] | None:
+    return _try_clip(lambda: embed_image_bytes(data))
+
+
+def clip_available() -> bool:
+    return registry.is_available(loaders.CLIP)
+
+
+def _try_clip(fn):
+    """Run a CLIP embedding, returning None on any failure so multimodal
+    callers degrade to text-only ranking instead of erroring."""
+    from app.core.exceptions import ModelUnavailableError
+
+    try:
+        return fn()
+    except ModelUnavailableError:
+        return None
+    except Exception as exc:  # noqa: BLE001 — embedding must never break a search
+        logger.warning("CLIP embedding failed, skipping visual signal: %s", exc)
+        return None
 
 
 # --------------------------------------------------------------- transcription

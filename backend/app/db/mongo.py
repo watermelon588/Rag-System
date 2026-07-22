@@ -23,6 +23,8 @@ DOCUMENTS = "documents"
 CHUNKS = "document_chunks"
 CHAT_SESSIONS = "chat_sessions"
 CHAT_MESSAGES = "chat_messages"
+SEARCH_HISTORY = "search_history"
+SAVED_RESULTS = "saved_results"
 
 
 @lru_cache
@@ -59,6 +61,15 @@ def init_indexes() -> None:
     )
     db[CHAT_MESSAGES].create_index(
         [("session_id", ASCENDING), ("created_at", ASCENDING)], name="session_order"
+    )
+    db[SEARCH_HISTORY].create_index(
+        [("owner_id", ASCENDING), ("created_at", DESCENDING)], name="owner_recent"
+    )
+    db[SAVED_RESULTS].create_index(
+        [("owner_id", ASCENDING), ("created_at", DESCENDING)], name="owner_recent"
+    )
+    db[SAVED_RESULTS].create_index(
+        [("owner_id", ASCENDING), ("url", ASCENDING)], name="owner_url"
     )
     logger.info("MongoDB indexes ensured on '%s'", get_settings().mongodb_db_name)
 

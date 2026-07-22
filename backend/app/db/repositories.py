@@ -18,6 +18,8 @@ from app.db.models import (
     ChatSession,
     Document,
     DocumentChunk,
+    SavedResult,
+    SearchHistoryEntry,
     User,
     new_id,
     utcnow,
@@ -58,6 +60,10 @@ class UserRepository:
         raw = self._col.find_one({"_id": user_id})
         return User(**_strip_id(raw)) if raw else None
 
+    def update(self, user_id: str, fields: dict) -> None:
+        if fields:
+            self._col.update_one({"_id": user_id}, {"$set": fields})
+
 
 # --------------------------------------------------------------- documents
 
@@ -81,6 +87,9 @@ class DocumentRepository:
     def list_by_owner(self, owner_id: str) -> list[Document]:
         cursor = self._col.find({"owner_id": owner_id}).sort("created_at", -1)
         return [Document(**_strip_id(raw)) for raw in cursor]
+
+    def count_by_owner(self, owner_id: str) -> int:
+        return self._col.count_documents({"owner_id": owner_id})
 
     def list_ready(self, owner_id: str, document_ids: list[str] | None = None) -> list[Document]:
         query: dict[str, Any] = {"owner_id": owner_id, "status": "ready"}
@@ -158,6 +167,9 @@ class ChatRepository:
         cursor = self._sessions.find({"owner_id": owner_id}).sort("updated_at", -1)
         return [ChatSession(**_strip_id(raw)) for raw in cursor]
 
+    def count_sessions(self, owner_id: str) -> int:
+        return self._sessions.count_documents({"owner_id": owner_id})
+
     def update_session(self, session_id: str, fields: dict) -> None:
         self._sessions.update_one({"_id": session_id}, {"$set": fields})
 
@@ -181,6 +193,69 @@ class ChatRepository:
     def recent_messages(self, session_id: str, limit: int) -> list[ChatMessage]:
         messages = self.list_messages(session_id)
         return messages[-limit:] if limit else messages
+
+
+# ---------------------------------------------------------- search history
+
+class SearchHistoryRepository:
+    def __init__(self, db: Database):
+        self._col = db[mongo.SEARCH_HISTORY]
+
+    def add(
+        self, owner_id: str, *, query_text: str, modality: str, result_count: int
+    ) -> SearchHistoryEntry:
+        entry = SearchHistoryEntry(
+            id=new_id(),
+            owner_id=owner_id,
+            query_text=query_text,
+            modality=modality,
+            result_count=result_count,
+        )
+        self._col.insert_one(_to_mongo(entry))
+        return entry
+
+    def list_by_owner(self, owner_id: str, limit: int = 50) -> list[SearchHistoryEntry]:
+        cursor = (
+            self._col.find({"owner_id": owner_id}).sort("created_at", -1).limit(limit)
+        )
+        return [SearchHistoryEntry(**_strip_id(raw)) for raw in cursor]
+
+    def delete(self, owner_id: str, entry_id: str) -> None:
+        self._col.delete_one({"_id": entry_id, "owner_id": owner_id})
+
+    def clear(self, owner_id: str) -> None:
+        self._col.delete_many({"owner_id": owner_id})
+
+    def count(self, owner_id: str) -> int:
+        return self._col.count_documents({"owner_id": owner_id})
+
+
+# ------------------------------------------------------------ saved results
+
+class SavedResultRepository:
+    def __init__(self, db: Database):
+        self._col = db[mongo.SAVED_RESULTS]
+
+    def add(self, result: SavedResult) -> SavedResult:
+        # Idempotent per (owner, url): re-saving the same result is a no-op.
+        if result.url:
+            existing = self._col.find_one(
+                {"owner_id": result.owner_id, "url": result.url}
+            )
+            if existing:
+                return SavedResult(**_strip_id(existing))
+        self._col.insert_one(_to_mongo(result))
+        return result
+
+    def list_by_owner(self, owner_id: str) -> list[SavedResult]:
+        cursor = self._col.find({"owner_id": owner_id}).sort("created_at", -1)
+        return [SavedResult(**_strip_id(raw)) for raw in cursor]
+
+    def delete(self, owner_id: str, result_id: str) -> None:
+        self._col.delete_one({"_id": result_id, "owner_id": owner_id})
+
+    def count(self, owner_id: str) -> int:
+        return self._col.count_documents({"owner_id": owner_id})
 
 
 # ------------------------------------------------------------------ helpers

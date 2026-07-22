@@ -77,6 +77,20 @@ class Settings(BaseSettings):
     clip_model: str = "ViT-B/32"
     whisper_model: str = "base"
     caption_model: str = "Salesforce/blip-image-captioning-base"
+
+    # ------------------------------------------------- multimodal / visual search
+    # Genuine cross-modal search fuses every input into ONE CLIP-space query
+    # vector and ranks image/video results by visual similarity to it (see
+    # services/search/multimodal.py and visual.py). These tune that behaviour.
+    enable_visual_search: bool = True
+    # Relative weights when fusing the query's text and image CLIP vectors.
+    clip_text_weight: float = 0.5
+    clip_image_weight: float = 0.5
+    # Cap how many result thumbnails we download+embed per category (latency).
+    visual_rerank_max_items: int = 20
+    visual_fetch_timeout_seconds: int = 6
+    # Largest thumbnail we will download before giving up (protects memory).
+    visual_fetch_max_bytes: int = 8 * 1024 * 1024
     # ---------------------------------------------------------- text generation
     # Generation provider selection (see app.ml.generation): if GROQ_API_KEY is
     # set the platform uses Groq's fast hosted models; otherwise it falls back

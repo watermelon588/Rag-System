@@ -5,7 +5,9 @@ import Navbar from '../components/Navbar';
 import SearchBar from '../components/SearchBar';
 import RelevancePanel, { ConfidenceBadge } from '../components/RelevancePanel';
 import { search as searchApi } from '../services/searchApi';
-import { getPendingFile, clearPendingFile } from '../fileStore';
+import { getPendingFiles, clearPendingFiles } from '../fileStore';
+import { saveResult as saveResultApi } from '../services/profileApi';
+import { useAuth } from '../context/AuthContext';
 
 /* ─── Animation variants ─────────────────────────────────────── */
 const containerVariants = {
@@ -43,6 +45,57 @@ function ArrowIcon() {
         <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
             <path d="M4 14 14 4M7 4h7v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
+    );
+}
+
+/* ─── Save (bookmark) button — visible only when signed in ───── */
+function SaveButton({ item, compact = false }) {
+    const { user } = useAuth();
+    const [saved, setSaved] = useState(false);
+    const [busy, setBusy] = useState(false);
+    if (!user) return null;
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (saved || busy) return;
+        setBusy(true);
+        try {
+            await saveResultApi({
+                category: item.category,
+                title: item.title,
+                url: item.url,
+                snippet: item.snippet,
+                source: item.source,
+                thumbnail_url: item.thumbnail_url,
+                image_url: item.image_url,
+            });
+            setSaved(true);
+        } catch {
+            /* best-effort */
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={handleSave}
+            title={saved ? 'Saved to your profile' : 'Save result'}
+            style={{
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                padding: compact ? '5px 8px' : '5px 12px', borderRadius: '999px',
+                background: saved ? 'rgba(16,185,129,0.14)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${saved ? 'rgba(16,185,129,0.35)' : 'rgba(255,255,255,0.12)'}`,
+                color: saved ? 'rgba(52,211,153,0.95)' : 'rgba(255,255,255,0.55)',
+                fontSize: '11px', fontWeight: 600, cursor: saved ? 'default' : 'pointer',
+                fontFamily: 'Inter, system-ui, sans-serif', transition: 'all 0.15s ease',
+            }}
+        >
+            <i className={`fa-${saved ? 'solid' : 'regular'} fa-bookmark`} style={{ fontSize: '11px' }} />
+            {!compact && (saved ? 'Saved' : 'Save')}
+        </button>
     );
 }
 
@@ -104,6 +157,9 @@ function WebCard({ item }) {
                 </div>
             </a>
             <RelevancePanel analysis={item.analysis} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <SaveButton item={item} />
+            </div>
         </motion.div>
     );
 }
@@ -130,6 +186,9 @@ function ImageCard({ item }) {
                 )}
                 <div style={{ position: 'absolute', top: '8px', right: '8px' }}>
                     <ConfidenceBadge level={item.analysis?.confidence} />
+                </div>
+                <div style={{ position: 'absolute', top: '8px', left: '8px' }}>
+                    <SaveButton item={item} compact />
                 </div>
             </div>
             <div style={{ padding: '10px 12px' }}>
@@ -184,6 +243,9 @@ function VideoCard({ item }) {
                 </div>
             </a>
             <RelevancePanel analysis={item.analysis} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <SaveButton item={item} />
+            </div>
         </motion.div>
     );
 }
@@ -231,6 +293,9 @@ function NewsCard({ item }) {
                 </div>
             </a>
             <RelevancePanel analysis={item.analysis} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <SaveButton item={item} />
+            </div>
         </motion.div>
     );
 }
@@ -239,8 +304,14 @@ function NewsCard({ item }) {
 function InterpretationBanner({ interpretation, summary, confidence, metadata }) {
     if (!interpretation) return null;
     const facts = [];
-    if (interpretation.transcript) facts.push({ label: 'Heard', value: interpretation.transcript });
-    if (interpretation.image_caption) facts.push({ label: 'Saw', value: interpretation.image_caption });
+    const transcripts = interpretation.transcripts?.length
+        ? interpretation.transcripts
+        : (interpretation.transcript ? [interpretation.transcript] : []);
+    const captions = interpretation.captions?.length
+        ? interpretation.captions
+        : (interpretation.image_caption ? [interpretation.image_caption] : []);
+    transcripts.forEach(t => facts.push({ label: 'Heard', value: t }));
+    captions.forEach(c => facts.push({ label: 'Saw', value: c }));
     facts.push({ label: 'Searched for', value: interpretation.interpreted_query });
 
     return (
@@ -258,6 +329,15 @@ function InterpretationBanner({ interpretation, summary, confidence, metadata })
                 }}>
                     {interpretation.modality} input
                 </span>
+                {interpretation.visual_search && (
+                    <span style={{
+                        fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+                        color: 'rgba(52,211,153,0.95)', background: 'rgba(16,185,129,0.12)',
+                        border: '1px solid rgba(16,185,129,0.30)', borderRadius: '999px', padding: '3px 10px',
+                    }}>
+                        ◆ visual match
+                    </span>
+                )}
                 <ConfidenceBadge level={confidence} />
                 {metadata?.degraded && (
                     <span style={{ fontSize: '11px', color: 'rgba(250,204,21,0.8)' }}>
@@ -359,7 +439,7 @@ function TabButton({ id, label, icon, active, count, onClick }) {
 export default function Search() {
     const location = useLocation();
     const query = location.state?.query || '';
-    const fileMeta = location.state?.file || null;
+    const filesMeta = location.state?.files || [];
 
     const [activeTab, setActiveTab] = useState('all');
     const [loading, setLoading] = useState(false);
@@ -369,10 +449,14 @@ export default function Search() {
     const [data, setData] = useState(null);
     const requestKeyRef = useRef(null);
 
-    const displayQuery = fileMeta ? `${query ? `${query} ` : ''}[${fileMeta.name}]` : query;
-    const hasQuery = Boolean(query || fileMeta);
+    const fileLabel = filesMeta.length === 1
+        ? `[${filesMeta[0].name}]`
+        : filesMeta.length > 1 ? `[${filesMeta.length} files]` : '';
+    const displayQuery = fileLabel ? `${query ? `${query} ` : ''}${fileLabel}` : query;
+    const hasQuery = Boolean(query || filesMeta.length);
 
     const searchAt = location.state?.at;
+    const fileKey = filesMeta.map(f => f.name).join('|');
     useEffect(() => {
         if (!hasQuery) return;
         // One request per distinct search. The key dedupes React StrictMode's
@@ -380,11 +464,11 @@ export default function Search() {
         // — or abort — the request twice. We deliberately do NOT use an
         // AbortController here: aborting on the StrictMode cleanup was killing
         // the only in-flight request, which is why results never loaded.
-        const requestKey = JSON.stringify({ query, file: fileMeta?.name, at: searchAt });
+        const requestKey = JSON.stringify({ query, files: fileKey, at: searchAt });
         if (requestKeyRef.current === requestKey) return;
         requestKeyRef.current = requestKey;
 
-        const file = getPendingFile();
+        const files = getPendingFiles();
 
         // Synchronously clear stale results the moment a new query begins.
         setLoading(true);
@@ -393,11 +477,11 @@ export default function Search() {
         setActiveTab('all');
         setPage(1);
 
-        searchApi({ query, file, page: 1 })
+        searchApi({ query, files, page: 1 })
             .then(response => {
                 if (requestKeyRef.current !== requestKey) return; // superseded
                 setData(response);
-                clearPendingFile();
+                clearPendingFiles();
             })
             .catch(err => {
                 if (requestKeyRef.current === requestKey) setError(err.message);
@@ -405,7 +489,7 @@ export default function Search() {
             .finally(() => {
                 if (requestKeyRef.current === requestKey) setLoading(false);
             });
-    }, [hasQuery, query, fileMeta?.name, searchAt]);
+    }, [hasQuery, query, fileKey, searchAt]);
 
     // Fetch the next page and append its results per-category. We resend the
     // interpreted query as text so file inputs aren't re-processed each page.

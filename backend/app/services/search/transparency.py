@@ -16,6 +16,13 @@ from app.services.search.ranking import (
     KEYWORD_WEIGHT,
     POSITION_WEIGHT,
     SEMANTIC_WEIGHT,
+    VISUAL_KEYWORD_WEIGHT,
+    VISUAL_ONLY_KEYWORD_WEIGHT,
+    VISUAL_ONLY_POSITION_WEIGHT,
+    VISUAL_ONLY_VISUAL_WEIGHT,
+    VISUAL_POSITION_WEIGHT,
+    VISUAL_SEMANTIC_WEIGHT,
+    VISUAL_WEIGHT,
     ScoredResult,
 )
 
@@ -51,21 +58,51 @@ def _describe_position(rank: int) -> str:
     return f"Ranked #{rank + 1} by the upstream search provider"
 
 
+def _describe_visual(score: float) -> str:
+    if score >= 0.7:
+        return "Closely matches the visual content of your uploaded media"
+    if score >= 0.4:
+        return "Shares visual features with your uploaded media"
+    return "Loosely resembles your uploaded media"
+
+
 def build_analysis(item: ScoredResult) -> RelevanceAnalysis:
     signals: list[RelevanceSignal] = []
+    has_visual = item.visual_score is not None
+    has_semantic = item.semantic_score is not None
 
-    if item.semantic_score is not None:
+    # Select the weight mix the ranker actually applied, so the reported
+    # weights always reconstruct the final score.
+    if has_visual:
+        semantic_weight = VISUAL_SEMANTIC_WEIGHT
+        keyword_weight = VISUAL_KEYWORD_WEIGHT if has_semantic else VISUAL_ONLY_KEYWORD_WEIGHT
+        position_weight = VISUAL_POSITION_WEIGHT if has_semantic else VISUAL_ONLY_POSITION_WEIGHT
+        visual_weight = VISUAL_WEIGHT if has_semantic else VISUAL_ONLY_VISUAL_WEIGHT
+        signals.append(
+            RelevanceSignal(
+                name="visual_similarity",
+                score=round(item.visual_score, 4),
+                weight=visual_weight,
+                explanation=_describe_visual(item.visual_score),
+            )
+        )
+    elif has_semantic:
+        semantic_weight, keyword_weight, position_weight = (
+            SEMANTIC_WEIGHT, KEYWORD_WEIGHT, POSITION_WEIGHT,
+        )
+    else:
+        semantic_weight = 0.0
+        keyword_weight, position_weight = DEGRADED_KEYWORD_WEIGHT, DEGRADED_POSITION_WEIGHT
+
+    if has_semantic:
         signals.append(
             RelevanceSignal(
                 name="semantic_similarity",
                 score=round(item.semantic_score, 4),
-                weight=SEMANTIC_WEIGHT,
+                weight=semantic_weight,
                 explanation=_describe_semantic(item.semantic_score),
             )
         )
-        keyword_weight, position_weight = KEYWORD_WEIGHT, POSITION_WEIGHT
-    else:
-        keyword_weight, position_weight = DEGRADED_KEYWORD_WEIGHT, DEGRADED_POSITION_WEIGHT
 
     signals.append(
         RelevanceSignal(

@@ -69,11 +69,17 @@ class QueryInterpretation(BaseModel):
 
     modality: Modality
     original_text: str | None = None
+    # Singular fields kept for backward compatibility (first of each list).
     transcript: str | None = None          # audio input → Whisper transcript
     image_caption: str | None = None       # image input → caption
+    # Full lists for genuinely multi-input (image + audio + …) queries.
+    transcripts: list[str] = Field(default_factory=list)
+    captions: list[str] = Field(default_factory=list)
     interpreted_query: str
     expanded_terms: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    # True when a fused CLIP vector drove visual re-ranking of the results.
+    visual_search: bool = False
 
 
 class PipelineStage(BaseModel):

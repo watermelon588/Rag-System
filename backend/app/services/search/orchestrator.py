@@ -18,9 +18,8 @@ from app.schemas.search import (
     SearchResponse,
     SearchResultItem,
 )
-from app.services.ingestion.modalities import process_search_input
 from app.services.providers.base import SearchProvider
-from app.services.search import transparency, understanding
+from app.services.search import multimodal, transparency, understanding
 from app.services.search.ranking import rank_results
 
 logger = get_logger(__name__)
@@ -31,6 +30,9 @@ ALL_CATEGORIES = [
     ResultCategory.VIDEOS,
     ResultCategory.NEWS,
 ]
+
+# Categories whose results carry a real thumbnail worth CLIP-scoring.
+_VISUAL_CATEGORIES = {ResultCategory.IMAGES, ResultCategory.VIDEOS}
 
 
 class _StageTimer:
@@ -56,7 +58,7 @@ class SearchOrchestrator:
         self,
         *,
         text: str | None,
-        file: UploadFile | None,
+        files: list[UploadFile] | None = None,
         categories: list[ResultCategory] | None = None,
         limit: int = 10,
         page: int = 1,
@@ -74,14 +76,19 @@ class SearchOrchestrator:
                 "Web search provider is not configured (missing SERPER_API_KEY)"
             )
 
-        # Stage 1 — modality processing + query understanding.
+        # Stage 1 — multimodal fusion (build the keyword query + CLIP vector)
+        # and query understanding.
         started = time.perf_counter()
-        modality_result = process_search_input(text, file)
-        interpretation = understanding.interpret(modality_result)
+        mm_query = multimodal.build(text, files)
+        interpretation = understanding.interpret(mm_query)
+        clip_query = mm_query.clip_vector
         timer.record(
             "query_understanding",
             started,
-            detail=f"{interpretation.modality.value} → '{interpretation.interpreted_query}'",
+            detail=(
+                f"{interpretation.modality.value} → '{interpretation.interpreted_query}'"
+                + (" (+CLIP vector)" if clip_query else "")
+            ),
         )
 
         # Stage 2 — candidate retrieval from the provider.
@@ -101,23 +108,34 @@ class SearchOrchestrator:
             detail=f"{total_raw} candidates from {self._provider.name} (page {page})",
         )
 
-        # Stage 3 — semantic re-ranking (per category, single embedding batch each).
+        # Stage 3 — hybrid re-ranking. Image/video categories additionally get
+        # CLIP visual scoring of their thumbnails against the fused query vector.
         started = time.perf_counter()
         degraded = False
+        visual_used = False
         ranked: dict[ResultCategory, list[SearchResultItem]] = {}
         for category, candidates in raw_results.items():
+            use_visual = bool(clip_query) and category in _VISUAL_CATEGORIES
             scored, category_degraded = rank_results(
-                interpretation.interpreted_query, candidates
+                interpretation.interpreted_query,
+                candidates,
+                clip_query=clip_query if use_visual else None,
+                visual=use_visual,
             )
             degraded = degraded or category_degraded
+            if use_visual and any(item.visual_score is not None for item in scored):
+                visual_used = True
             ranked[category] = [
                 transparency.to_result_item(item, rank) for rank, item in enumerate(scored)
             ]
         timer.record(
-            "semantic_ranking",
+            "hybrid_ranking",
             started,
             status="degraded" if degraded else "completed",
-            detail="lexical fallback" if degraded else None,
+            detail=(
+                "visual + text signals" if visual_used
+                else "lexical fallback" if degraded else "text signals"
+            ),
         )
 
         # Stage 4 — aggregate transparency.

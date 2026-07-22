@@ -55,6 +55,34 @@ class AuthService:
     def get_user(self, user_id: str) -> User | None:
         return self._users.get_by_id(user_id)
 
+    def update_profile(
+        self,
+        user: User,
+        *,
+        display_name: str | None = None,
+        bio: str | None = None,
+        avatar_url: str | None = None,
+    ) -> User:
+        fields: dict = {}
+        if display_name is not None:
+            fields["display_name"] = display_name.strip()
+        if bio is not None:
+            fields["bio"] = bio.strip()
+        if avatar_url is not None:
+            fields["avatar_url"] = avatar_url or None
+        if fields:
+            self._users.update(user.id, fields)
+        refreshed = self._users.get_by_id(user.id)
+        return refreshed or user
+
+    def change_password(
+        self, user: User, current_password: str, new_password: str
+    ) -> None:
+        if not verify_password(current_password, user.password_hash):
+            raise AuthenticationError("Current password is incorrect")
+        self._users.update(user.id, {"password_hash": hash_password(new_password)})
+        logger.info("Password changed for user %s", user.id)
+
     @staticmethod
     def _issue_tokens(user: User) -> TokenPair:
         return TokenPair(

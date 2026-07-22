@@ -29,6 +29,32 @@ class User:
     display_name: str
     password_hash: str
     created_at: datetime
+    bio: str = ""
+    avatar_url: str | None = None
+
+
+@dataclass
+class SearchHistoryEntry:
+    id: str
+    owner_id: str
+    query_text: str
+    modality: str
+    result_count: int
+    created_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass
+class SavedResult:
+    id: str
+    owner_id: str
+    category: str
+    title: str | None
+    url: str | None
+    snippet: str | None
+    source: str | None
+    thumbnail_url: str | None
+    image_url: str | None
+    created_at: datetime = field(default_factory=utcnow)
 
 
 @dataclass

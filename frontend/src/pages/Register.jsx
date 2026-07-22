@@ -13,14 +13,21 @@ const inputStyle = {
 export default function Register() {
     const { register } = useAuth();
     const navigate = useNavigate();
-    const [displayName, setDisplayName] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
 
     async function handleSubmit(e) {
         e.preventDefault();
+        // Read from the form directly so browser autofill is captured.
+        const fd = new FormData(e.currentTarget);
+        const displayName = (fd.get('displayName') || '').toString().trim();
+        const email = (fd.get('email') || '').toString().trim();
+        const password = (fd.get('password') || '').toString();
+
+        if (!displayName || !email) {
+            setError('Please fill in your name and email');
+            return;
+        }
         if (password.length < 8) {
             setError('Password must be at least 8 characters');
             return;
@@ -41,12 +48,12 @@ export default function Register() {
         <AuthShell title="Create your account" subtitle="Upload documents and chat with them in minutes">
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <FormError message={error} />
-                <input style={inputStyle} type="text" placeholder="Name" value={displayName}
-                       onChange={e => setDisplayName(e.target.value)} required maxLength={120} />
-                <input style={inputStyle} type="email" placeholder="Email" value={email}
-                       onChange={e => setEmail(e.target.value)} required autoComplete="email" />
-                <input style={inputStyle} type="password" placeholder="Password (min. 8 characters)" value={password}
-                       onChange={e => setPassword(e.target.value)} required minLength={8} autoComplete="new-password" />
+                <input style={inputStyle} type="text" name="displayName" placeholder="Name"
+                       required maxLength={120} autoComplete="name" />
+                <input style={inputStyle} type="email" name="email" placeholder="Email"
+                       required autoComplete="email" />
+                <input style={inputStyle} type="password" name="password" placeholder="Password (min. 8 characters)"
+                       required minLength={8} autoComplete="new-password" />
                 <SubmitButton busy={busy}>Create account</SubmitButton>
             </form>
             <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginTop: '20px', textAlign: 'center' }}>

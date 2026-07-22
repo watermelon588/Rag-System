@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.ml import generation
 from app.schemas.search import QueryInterpretation
-from app.services.ingestion.modalities import ModalityResult
+from app.services.search.multimodal import MultimodalQuery
 
 logger = get_logger(__name__)
 
@@ -74,16 +74,11 @@ def _llm_refine(query: str) -> str | None:
     return refined
 
 
-def interpret(modality_result: ModalityResult) -> QueryInterpretation:
+def interpret(query: MultimodalQuery) -> QueryInterpretation:
     settings = get_settings()
-    notes: list[str] = []
+    notes: list[str] = list(query.notes)
 
-    if modality_result.transcript:
-        notes.append("Audio transcribed with Whisper")
-    if modality_result.image_caption:
-        notes.append("Image described with a vision captioning model")
-
-    cleaned = clean_query(modality_result.query_text)
+    cleaned = clean_query(query.text_query)
     interpreted = cleaned
 
     # Only refine longer, potentially-noisy queries. Short keyword queries
@@ -97,16 +92,19 @@ def interpret(modality_result: ModalityResult) -> QueryInterpretation:
             refined = clean_query(refined)
         if refined and refined.lower() != cleaned.lower():
             interpreted = refined
-            notes.append("Query refined by the local language model")
+            notes.append("Query refined by the language model")
 
     expanded = significant_terms(interpreted)
 
     return QueryInterpretation(
-        modality=modality_result.modality,
-        original_text=modality_result.original_text,
-        transcript=modality_result.transcript,
-        image_caption=modality_result.image_caption,
-        interpreted_query=interpreted or modality_result.query_text,
+        modality=query.modality,
+        original_text=query.original_text,
+        transcript=query.transcripts[0] if query.transcripts else None,
+        image_caption=query.captions[0] if query.captions else None,
+        transcripts=query.transcripts,
+        captions=query.captions,
+        interpreted_query=interpreted or query.text_query,
         expanded_terms=expanded,
         notes=notes,
+        visual_search=query.has_visual_query,
     )

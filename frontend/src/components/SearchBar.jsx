@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { setPendingFile, clearPendingFile } from '../fileStore';
+import { setPendingFiles, clearPendingFiles } from '../fileStore';
 
 /* ─── Upload type definitions ───────────────────────────────────── */
 const UPLOAD_TYPES = [
@@ -11,11 +11,23 @@ const UPLOAD_TYPES = [
     { id: 'audio', accept: 'audio/*', title: 'Audio', faClass: 'fa-solid fa-microphone-lines' },
 ];
 
+/* Stable-ish id for attachment tracking. */
+function makeId() {
+    return (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+}
+
+function fileKind(file) {
+    if (file.type.startsWith('image/')) return 'image';
+    if (file.type.startsWith('audio/')) return 'audio';
+    if (file.type.startsWith('video/')) return 'video';
+    return 'file';
+}
+
 /* ═══ SEARCHBAR ════════════════════════════════════════════════════ */
 export default function SearchBar({ compact = false, initialQuery = '', loading: externalLoading = false }) {
     const [query, setQuery] = useState(initialQuery);
-    const [file, setFile] = useState(null);       // File | null
-    const [imgPreview, setImgPreview] = useState(null);       // object URL | null
+    // Each attachment: { id, file, previewUrl (images only), kind }
+    const [attachments, setAttachments] = useState([]);
     const [focused, setFocused] = useState(false);
     const [dragging, setDragging] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
@@ -31,8 +43,9 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
 
     const navigate = useNavigate();
     const fileInputRef = useRef(null);
-    const activeTypeId = useRef(null);
     const menuRef = useRef(null);
+
+    const hasFiles = attachments.length > 0;
 
     /* ── close menu on outside click ────────────────────────────── */
     useEffect(() => {
@@ -45,39 +58,43 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [showMenu]);
 
-    /* ── revoke object URLs on unmount / change ─────────────────── */
+    /* ── revoke ALL preview object URLs on unmount ──────────────── */
     useEffect(() => {
-        return () => { if (imgPreview) URL.revokeObjectURL(imgPreview); };
-    }, [imgPreview]);
-
-    useEffect(() => {
-        return () => { if (audioURL) URL.revokeObjectURL(audioURL); };
-    }, [audioURL]);
-
-    /* ── apply a chosen File ────────────────────────────────────── */
-    const applyFile = useCallback((selected) => {
-        if (!selected) return;
-        setFile(selected);
-        setPendingFile(selected);
-        if (selected.type.startsWith('image/')) {
-            setImgPreview(URL.createObjectURL(selected));
-        } else {
-            setImgPreview(null);
-        }
+        return () => {
+            attachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+            if (audioURL) URL.revokeObjectURL(audioURL);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    /* ── remove file ────────────────────────────────────────────── */
-    const removeFile = useCallback(() => {
-        setFile(null);
-        clearPendingFile();
-        if (imgPreview) { URL.revokeObjectURL(imgPreview); setImgPreview(null); }
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        activeTypeId.current = null;
-    }, [imgPreview]);
+    /* ── append chosen Files (multiple) ─────────────────────────── */
+    const applyFiles = useCallback((selectedList) => {
+        const incoming = Array.from(selectedList || []).filter(Boolean);
+        if (!incoming.length) return;
+        setAttachments(prev => [
+            ...prev,
+            ...incoming.map(file => ({
+                id: makeId(),
+                file,
+                kind: fileKind(file),
+                previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+            })),
+        ]);
+    }, []);
+
+    /* ── remove a single attachment ─────────────────────────────── */
+    const removeFile = useCallback((id) => {
+        setAttachments(prev => {
+            const target = prev.find(a => a.id === id);
+            if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+            const next = prev.filter(a => a.id !== id);
+            if (!next.length) clearPendingFiles();
+            return next;
+        });
+    }, []);
 
     /* ── icon button click ──────────────────────────────────────── */
     const handleUploadClick = (type) => {
-        activeTypeId.current = type.id;
         if (fileInputRef.current) {
             fileInputRef.current.accept = type.accept;
             fileInputRef.current.click();
@@ -85,13 +102,12 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
     };
 
     const handleFileChange = (e) => {
-        applyFile(e.target.files?.[0]);
+        applyFiles(e.target.files);
         e.target.value = '';
     };
 
     /* ── mic click handler ──────────────────────────────────────── */
     const handleMicClick = async () => {
-        // Stop any playing audio & clear old blobs
         if (audioInstance) {
             audioInstance.pause();
             setAudioInstance(null);
@@ -147,24 +163,25 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
     const handleDrop = (e) => {
         e.preventDefault();
         setDragging(false);
-        applyFile(e.dataTransfer.files?.[0]);
+        applyFiles(e.dataTransfer.files);
     };
 
     /* ── submit ─────────────────────────────────────────────────── */
-    // The Search page owns the API call; the bar only hands over the
-    // query text (route state) and the File object (in-memory fileStore).
+    // The Search page owns the API call; the bar hands over the query text
+    // (route state) and the File objects (in-memory fileStore).
     const handleSubmit = (e) => {
         e?.preventDefault();
 
         const q = (query || "").trim();
-        if (!q && !file) return;
+        if (!q && !hasFiles) return;
 
-        if (file) setPendingFile(file);
+        const files = attachments.map(a => a.file);
+        if (files.length) setPendingFiles(files);
 
         navigate("/search", {
             state: {
                 query: q,
-                file: file ? { name: file.name, type: file.type } : null,
+                files: attachments.map(a => ({ name: a.file.name, type: a.file.type })),
                 at: Date.now(), // makes re-submitting the same query re-fetch
             },
         });
@@ -178,7 +195,7 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
     };
 
     const isSubmitting = externalLoading;
-    const canSubmit = (!!query.trim() || !!file) && !isSubmitting;
+    const canSubmit = (!!query.trim() || hasFiles) && !isSubmitting;
 
     /* ── border / glow styles ───────────────────────────────────── */
     const borderColor = dragging
@@ -191,8 +208,10 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
             ? '0 0 0 1px rgba(255,255,255,0.12), 0 6px 28px rgba(0,0,0,0.40)'
             : '0 4px 20px rgba(0,0,0,0.30)';
 
-    /* ── file icon for non-image ────────────────────────────────── */
-    const fileIconClass = file?.type.startsWith('audio/') ? 'fa-solid fa-microphone' : 'fa-solid fa-video';
+    const kindIcon = (kind) =>
+        kind === 'audio' ? 'fa-solid fa-microphone'
+            : kind === 'video' ? 'fa-solid fa-video'
+                : 'fa-solid fa-file';
 
     return (
         <>
@@ -200,107 +219,88 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                 onSubmit={handleSubmit}
                 initial={{ opacity: 0, scale: 0.97 }}
                 animate={{ opacity: 1, scale: 1 }}
-                layout // Framer motion automatic layout transitions
+                layout
                 transition={{ duration: 0.3, ease: 'easeOut', delay: 0.05 }}
                 onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={handleDrop}
                 style={{
                     position: 'relative',
-                    // Lift the whole search bar (and its downward-opening upload
-                    // menu) above the results content, which otherwise paints
-                    // over it as a later sibling in the same stacking context.
                     zIndex: showMenu ? 40 : 20,
                     width: '100%',
                     maxWidth: compact ? '640px' : '720px',
 
-                    /* ── Layout Logic ── */
                     minHeight: compact ? '52px' : '58px',
-                    height: file ? 'auto' : (compact ? '52px' : '58px'),
+                    height: hasFiles ? 'auto' : (compact ? '52px' : '58px'),
                     display: 'flex',
-                    flexDirection: file ? 'column' : 'row',
-                    alignItems: file ? 'stretch' : 'center',
-                    gap: file ? '6px' : '8px',
-                    padding: file ? '14px 16px' : '0 8px',
+                    flexDirection: hasFiles ? 'column' : 'row',
+                    alignItems: hasFiles ? 'stretch' : 'center',
+                    gap: hasFiles ? '6px' : '8px',
+                    padding: hasFiles ? '14px 16px' : '0 8px',
 
-                    borderRadius: file ? '24px' : '999px',
+                    borderRadius: hasFiles ? '24px' : '999px',
                     border: `1px solid ${borderColor}`,
                     background: 'rgba(255,255,255,0.07)',
                     backdropFilter: 'blur(20px)',
                     WebkitBackdropFilter: 'blur(20px)',
                     boxShadow: glowShadow,
                     transition: 'border-color 0.2s ease, box-shadow 0.2s ease, border-radius 0.3s ease, padding 0.3s ease',
-                    overflow: 'visible', // Must be visible for absolute popup menu
+                    overflow: 'visible',
                 }}
             >
-                {/* hidden file input */}
-                <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
+                {/* hidden file input (multiple) */}
+                <input type="file" multiple ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
 
-                {/* ── TOP ROW: File preview (Only visible when file exists) ──────────────────────── */}
+                {/* ── TOP ROW: attachment previews (row of thumbnails) ──────────── */}
                 <AnimatePresence>
-                    {file && (
+                    {hasFiles && (
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.8, height: 0 }}
-                            animate={{ opacity: 1, scale: 1, height: 'auto' }}
-                            exit={{ opacity: 0, scale: 0.8, height: 0 }}
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
                             transition={{ duration: 0.2 }}
-                            style={{ position: 'relative', flexShrink: 0, alignSelf: 'flex-start', marginBottom: '4px', zIndex: 10 }}
+                            style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignSelf: 'flex-start', marginBottom: '4px', zIndex: 10 }}
                         >
-                            {/* Thumbnail or icon */}
-                            <div style={{
-                                width: '48px',
-                                height: '48px',
-                                borderRadius: '10px',
-                                overflow: 'hidden',
-                                background: imgPreview ? 'transparent' : 'rgba(255,255,255,0.10)',
-                                border: '1px solid rgba(255,255,255,0.2)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                            }}>
-                                {imgPreview ? (
-                                    <img
-                                        src={imgPreview}
-                                        alt="preview"
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                                    />
-                                ) : (
-                                    <i className={fileIconClass} style={{ fontSize: '20px', color: 'rgba(61,139,255,0.85)' }} />
-                                )}
-                            </div>
-
-                            {/* Remove (×) badge */}
-                            <button
-                                type="button"
-                                onClick={removeFile}
-                                title="Remove file"
-                                style={{
-                                    position: 'absolute',
-                                    top: '-6px',
-                                    right: '-6px',
-                                    width: '20px',
-                                    height: '20px',
-                                    borderRadius: '50%',
-                                    background: 'rgba(20,20,30,0.95)',
-                                    border: '1px solid rgba(255,255,255,0.2)',
-                                    color: 'rgba(255,255,255,0.85)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    padding: 0,
-                                    lineHeight: 1,
-                                    transition: 'background 0.15s ease, color 0.15s ease, transform 0.15s ease',
-                                    zIndex: 2,
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                                }}
-                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,50,50,0.95)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.transform = 'scale(1.1)'; }}
-                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(20,20,30,0.95)'; e.currentTarget.style.color = 'rgba(255,255,255,0.85)'; e.currentTarget.style.transform = 'scale(1)'; }}
-                            >
-                                <i className="fa-solid fa-xmark" style={{ fontSize: '11px', pointerEvents: 'none' }} />
-                            </button>
+                            {attachments.map(att => (
+                                <div key={att.id} style={{ position: 'relative', flexShrink: 0 }}>
+                                    <div style={{
+                                        width: '48px',
+                                        height: '48px',
+                                        borderRadius: '10px',
+                                        overflow: 'hidden',
+                                        background: att.previewUrl ? 'transparent' : 'rgba(255,255,255,0.10)',
+                                        border: '1px solid rgba(255,255,255,0.2)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                    }}>
+                                        {att.previewUrl ? (
+                                            <img src={att.previewUrl} alt="preview"
+                                                 style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                        ) : (
+                                            <i className={kindIcon(att.kind)} style={{ fontSize: '18px', color: 'rgba(61,139,255,0.85)' }} />
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => removeFile(att.id)}
+                                        title="Remove file"
+                                        style={{
+                                            position: 'absolute', top: '-6px', right: '-6px',
+                                            width: '20px', height: '20px', borderRadius: '50%',
+                                            background: 'rgba(20,20,30,0.95)', border: '1px solid rgba(255,255,255,0.2)',
+                                            color: 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            cursor: 'pointer', padding: 0, lineHeight: 1, zIndex: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                            transition: 'background 0.15s ease, transform 0.15s ease',
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,50,50,0.95)'; e.currentTarget.style.transform = 'scale(1.1)'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(20,20,30,0.95)'; e.currentTarget.style.transform = 'scale(1)'; }}
+                                    >
+                                        <i className="fa-solid fa-xmark" style={{ fontSize: '11px', pointerEvents: 'none' }} />
+                                    </button>
+                                </div>
+                            ))}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -315,29 +315,18 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                             className="plus-button"
                             onClick={() => setShowMenu(prev => !prev)}
                             style={{
-                                width: '36px',
-                                height: '36px',
-                                borderRadius: '50%',
+                                width: '36px', height: '36px', borderRadius: '50%',
                                 background: showMenu ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.08)',
-                                color: 'rgba(255,255,255,0.8)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
+                                border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.8)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
                                 transition: 'all 0.15s ease',
                             }}
-                            onMouseEnter={e => {
-                                if (!showMenu) e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-                            }}
-                            onMouseLeave={e => {
-                                if (!showMenu) e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-                            }}
+                            onMouseEnter={e => { if (!showMenu) e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
+                            onMouseLeave={e => { if (!showMenu) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
                         >
                             <i className="fa-solid fa-plus" style={{ fontSize: '15px', pointerEvents: 'none' }} />
                         </button>
 
-                        {/* Popup Menu */}
                         <AnimatePresence>
                             {showMenu && (
                                 <motion.div
@@ -347,58 +336,27 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                                     exit={{ opacity: 0, y: -8, scale: 0.96 }}
                                     transition={{ duration: 0.15, ease: 'easeOut' }}
                                     style={{
-                                        position: 'absolute',
-                                        // Open DOWNWARD from the button so it is never
-                                        // clipped by (or hidden behind) the fixed navbar
-                                        // when the search bar sits near the top of the page.
-                                        top: 'calc(100% + 12px)',
-                                        left: 0,
-                                        background: 'rgba(14,15,18,0.96)',
-                                        border: '1px solid var(--border-strong)',
-                                        borderRadius: '14px',
-                                        padding: '8px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '2px',
-                                        backdropFilter: 'blur(24px)',
-                                        WebkitBackdropFilter: 'blur(24px)',
-                                        boxShadow: 'var(--shadow-pop)',
-                                        zIndex: 1000,
-                                        minWidth: '190px'
+                                        position: 'absolute', top: 'calc(100% + 12px)', left: 0,
+                                        background: 'rgba(14,15,18,0.96)', border: '1px solid var(--border-strong)',
+                                        borderRadius: '14px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '2px',
+                                        backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+                                        boxShadow: 'var(--shadow-pop)', zIndex: 1000, minWidth: '190px',
                                     }}
                                 >
                                     {UPLOAD_TYPES.map(type => (
                                         <button
                                             key={type.id}
                                             type="button"
-                                            onClick={() => {
-                                                handleUploadClick(type);
-                                                setShowMenu(false);
-                                            }}
+                                            onClick={() => { handleUploadClick(type); setShowMenu(false); }}
                                             style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '12px',
-                                                padding: '10px 14px',
-                                                borderRadius: '8px',
-                                                background: 'transparent',
-                                                border: 'none',
-                                                color: 'rgba(209,213,219,1)',
-                                                fontSize: '14px',
-                                                fontWeight: 500,
-                                                fontFamily: 'Inter, system-ui, sans-serif',
-                                                cursor: 'pointer',
-                                                textAlign: 'left',
-                                                transition: 'background 0.15s ease, color 0.15s ease'
+                                                display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px',
+                                                borderRadius: '8px', background: 'transparent', border: 'none',
+                                                color: 'rgba(209,213,219,1)', fontSize: '14px', fontWeight: 500,
+                                                fontFamily: 'Inter, system-ui, sans-serif', cursor: 'pointer', textAlign: 'left',
+                                                transition: 'background 0.15s ease, color 0.15s ease',
                                             }}
-                                            onMouseEnter={e => {
-                                                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-                                                e.currentTarget.style.color = '#fff';
-                                            }}
-                                            onMouseLeave={e => {
-                                                e.currentTarget.style.background = 'transparent';
-                                                e.currentTarget.style.color = 'rgba(209,213,219,1)';
-                                            }}
+                                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#fff'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(209,213,219,1)'; }}
                                         >
                                             <i className={type.faClass} style={{ width: '16px', textAlign: 'center', fontSize: '15px' }} />
                                             {type.title}
@@ -417,18 +375,11 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                         onKeyDown={handleKeyDown}
                         onFocus={() => setFocused(true)}
                         onBlur={() => setFocused(false)}
-                        placeholder="Ask anything…"
+                        placeholder={hasFiles ? "Add words to refine your media…" : "Ask anything…"}
                         style={{
-                            flex: 1,
-                            minWidth: 0,
-                            background: 'transparent',
-                            border: 'none',
-                            outline: 'none',
-                            color: '#fff',
-                            paddingLeft: '6px',
-                            fontSize: compact ? '14px' : '15px',
-                            fontFamily: 'Inter, system-ui, sans-serif',
-                            letterSpacing: '-0.01em',
+                            flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none',
+                            color: '#fff', paddingLeft: '6px', fontSize: compact ? '14px' : '15px',
+                            fontFamily: 'Inter, system-ui, sans-serif', letterSpacing: '-0.01em',
                             caretColor: 'rgba(255,255,255,0.7)',
                         }}
                     />
@@ -439,27 +390,13 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                         onClick={handleMicClick}
                         title="Record voice"
                         style={{
-                            width: '34px',
-                            height: '34px',
-                            borderRadius: '50%',
-                            background: 'transparent',
-                            border: '1px solid transparent',
-                            color: 'rgba(255,255,255,0.4)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            flexShrink: 0,
+                            width: '34px', height: '34px', borderRadius: '50%', background: 'transparent',
+                            border: '1px solid transparent', color: 'rgba(255,255,255,0.4)', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                            transition: 'all 0.15s ease', flexShrink: 0,
                         }}
-                        onMouseEnter={e => {
-                            e.currentTarget.style.color = 'rgba(255,255,255,0.9)';
-                            e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-                        }}
-                        onMouseLeave={e => {
-                            e.currentTarget.style.color = 'rgba(255,255,255,0.4)';
-                            e.currentTarget.style.background = 'transparent';
-                        }}
+                        onMouseEnter={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.9)'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; e.currentTarget.style.background = 'transparent'; }}
                     >
                         <i className="fa-solid fa-microphone" style={{ fontSize: '15px', pointerEvents: 'none' }} />
                     </button>
@@ -472,18 +409,11 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                         whileTap={canSubmit ? { scale: 0.95 } : {}}
                         transition={{ type: 'spring', stiffness: 420, damping: 22 }}
                         style={{
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '50%',
-                            background: canSubmit ? '#fff' : 'rgba(255,255,255,0.1)',
-                            border: 'none',
-                            color: canSubmit ? '#000' : 'rgba(255,255,255,0.3)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: canSubmit ? 'pointer' : 'not-allowed',
-                            flexShrink: 0,
-                            transition: 'background 0.2s ease, color 0.2s ease',
+                            width: '36px', height: '36px', borderRadius: '50%',
+                            background: canSubmit ? '#fff' : 'rgba(255,255,255,0.1)', border: 'none',
+                            color: canSubmit ? '#000' : 'rgba(255,255,255,0.3)', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', cursor: canSubmit ? 'pointer' : 'not-allowed',
+                            flexShrink: 0, transition: 'background 0.2s ease, color 0.2s ease',
                         }}
                     >
                         {isSubmitting ? (
@@ -497,17 +427,10 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                 {/* ── Drag-over overlay ────────────────────────────────── */}
                 {dragging && (
                     <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        borderRadius: file ? '24px' : '999px',
-                        background: 'rgba(61,139,255,0.10)',
-                        border: '1.5px dashed rgba(61,139,255,0.55)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        pointerEvents: 'none',
-                        zIndex: 10,
-                        transition: 'border-radius 0.3s ease',
+                        position: 'absolute', inset: 0, borderRadius: hasFiles ? '24px' : '999px',
+                        background: 'rgba(61,139,255,0.10)', border: '1.5px dashed rgba(61,139,255,0.55)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+                        zIndex: 10, transition: 'border-radius 0.3s ease',
                     }}>
                         <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(145,185,255,0.90)' }}>
                             <i className="fa-solid fa-cloud-arrow-up" style={{ marginRight: '6px' }} />
@@ -525,15 +448,9 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         style={{
-                            position: 'fixed',
-                            inset: 0,
-                            zIndex: 9999,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: 'rgba(0,0,0,0.6)',
-                            backdropFilter: 'blur(4px)',
-                            WebkitBackdropFilter: 'blur(4px)',
+                            position: 'fixed', inset: 0, zIndex: 9999, display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)',
+                            backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
                         }}
                     >
                         <motion.div
@@ -542,20 +459,11 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                             exit={{ scale: 0.9, opacity: 0 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                             style={{
-                                background: 'rgba(255,255,255,0.1)',
-                                backdropFilter: 'blur(24px)',
-                                WebkitBackdropFilter: 'blur(24px)',
-                                border: '1px solid rgba(255,255,255,0.2)',
-                                borderRadius: '16px',
-                                padding: '32px',
-                                width: '320px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                                background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+                                border: '1px solid rgba(255,255,255,0.2)', borderRadius: '16px', padding: '32px', width: '320px',
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
                             }}
                         >
-                            {/* IF RECORDING OR WAITING TO RECORD */}
                             {!audioBlob ? (
                                 <>
                                     <div style={{ display: 'flex', gap: '8px', height: '48px', alignItems: 'center', marginBottom: '24px' }}>
@@ -582,11 +490,8 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                                         style={{
                                             width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)',
                                             border: '1px solid rgba(255,255,255,0.2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            cursor: isRecording ? 'pointer' : 'not-allowed',
-                                            boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-                                            transition: 'background 0.2s ease',
-                                            opacity: isRecording ? 1 : 0.5,
-                                            position: 'relative'
+                                            cursor: isRecording ? 'pointer' : 'not-allowed', boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+                                            transition: 'background 0.2s ease', opacity: isRecording ? 1 : 0.5, position: 'relative'
                                         }}
                                         onMouseEnter={e => { if (isRecording) e.currentTarget.style.background = 'rgba(255,255,255,0.2)' }}
                                         onMouseLeave={e => { if (isRecording) e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
@@ -599,7 +504,6 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                                     </button>
                                 </>
                             ) : (
-                                /* IF RECORDING IS COMPLETE (PLAYBACK) */
                                 <>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(255,255,255,0.1)', padding: '12px 20px', borderRadius: '999px', marginBottom: '24px', width: '100%', border: '1px solid rgba(255,255,255,0.15)' }}>
                                         <button
@@ -646,8 +550,9 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                                             type="button"
                                             onClick={() => {
                                                 const audioFile = new File([audioBlob], 'recording.webm', { type: 'audio/webm' });
-                                                applyFile(audioFile);
+                                                applyFiles([audioFile]);
                                                 setShowVoiceModal(false);
+                                                setAudioBlob(null);
                                                 if (audioInstance) { audioInstance.pause(); setAudioInstance(null); }
                                                 setIsPlaying(false);
                                             }}
@@ -670,4 +575,3 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
         </>
     );
 }
-

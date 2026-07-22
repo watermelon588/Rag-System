@@ -42,9 +42,21 @@ export function AuthProvider({ children }) {
         setUser(null);
     }, []);
 
+    // Replace the cached user (e.g. after a profile edit) so the whole app
+    // reflects the new display name / avatar without a full reload.
+    const updateUser = useCallback((profile) => {
+        setUser(prev => (profile ? { ...prev, ...profile } : prev));
+    }, []);
+
+    const refreshProfile = useCallback(async () => {
+        const profile = await authApi.fetchProfile();
+        setUser(profile);
+        return profile;
+    }, []);
+
     const value = useMemo(
-        () => ({ user, initializing, login, register, logout }),
-        [user, initializing, login, register, logout],
+        () => ({ user, initializing, login, register, logout, updateUser, refreshProfile }),
+        [user, initializing, login, register, logout, updateUser, refreshProfile],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
