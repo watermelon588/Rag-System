@@ -106,6 +106,23 @@ async def transcribe(
     started = time.perf_counter()
     stored = save_upload(file, allowed_extensions=AUDIO_EXTENSIONS)
 
+    # Probe the waveform before spending a Whisper pass on it: a muted mic and
+    # an unintelligible take both come back as "" otherwise.
+    try:
+        duration_s, peak = inference.audio_stats(stored.path)
+    except Exception:  # noqa: BLE001 — probing is best-effort
+        duration_s, peak = -1.0, -1.0
+
+    if 0 <= duration_s < 0.4:
+        raise InvalidInputError(
+            f"The recording is only {duration_s:.1f}s long — hold the record button longer."
+        )
+    if 0 <= peak < 0.005:
+        raise InvalidInputError(
+            "The recording is silent: the microphone captured no sound. Check that the "
+            "right input device is selected and unmuted."
+        )
+
     try:
         text = inference.transcribe_audio(stored.path)
     except ModelUnavailableError as exc:
@@ -118,7 +135,13 @@ async def transcribe(
         ) from exc
 
     if not text:
-        raise InvalidInputError("No speech was detected in the recording")
+        raise InvalidInputError(
+            "No speech was detected in the recording "
+            f"({duration_s:.1f}s, peak level {peak * 100:.0f}%). Try speaking closer to "
+            "the microphone."
+            if duration_s >= 0
+            else "No speech was detected in the recording"
+        )
 
     return TranscriptionResponse(
         text=text,

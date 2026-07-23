@@ -14,17 +14,20 @@ text signals, so a slow or dead image URL never blocks or breaks a search.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urljoin
 
 import requests
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.net import UnsafeUrlError, ensure_public_http_url
 from app.ml import inference
 from app.services.providers.base import ProviderResult
 
 logger = get_logger(__name__)
 
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; MultimodalSearch/1.0)"}
+_MAX_REDIRECTS = 3
 
 
 def _thumbnail_url(result: ProviderResult) -> str | None:
@@ -75,16 +78,47 @@ def visual_scores(
 
 
 def _fetch(url: str, timeout: int, max_bytes: int) -> bytes | None:
+    """Download a thumbnail, refusing any URL that points inside our network.
+
+    Redirects are followed by hand (``allow_redirects=False``) so every hop is
+    re-checked: a perfectly public thumbnail URL that 302s to 127.0.0.1 or the
+    cloud metadata service is the classic SSRF bypass.
+    """
     try:
-        response = requests.get(url, headers=_HEADERS, timeout=timeout, stream=True)
-        response.raise_for_status()
-        content = b""
-        for chunk in response.iter_content(64 * 1024):
-            content += chunk
-            if len(content) > max_bytes:
-                logger.info("Thumbnail exceeds size cap, skipping: %s", url)
-                return None
-        return content or None
+        current = ensure_public_http_url(url)
+
+        for _ in range(_MAX_REDIRECTS + 1):
+            response = requests.get(
+                current,
+                headers=_HEADERS,
+                timeout=timeout,
+                stream=True,
+                allow_redirects=False,
+            )
+
+            if response.is_redirect or response.is_permanent_redirect:
+                location = response.headers.get("Location")
+                response.close()
+                if not location:
+                    return None
+                # Relative redirects resolve against the URL we just fetched.
+                current = ensure_public_http_url(urljoin(current, location))
+                continue
+
+            response.raise_for_status()
+            content = b""
+            for chunk in response.iter_content(64 * 1024):
+                content += chunk
+                if len(content) > max_bytes:
+                    logger.info("Thumbnail exceeds size cap, skipping: %s", url)
+                    return None
+            return content or None
+
+        logger.debug("Thumbnail exceeded the redirect limit: %s", url)
+        return None
+    except UnsafeUrlError as exc:
+        logger.warning("Refused to fetch thumbnail (%s): %s", url, exc)
+        return None
     except requests.RequestException as exc:
         logger.debug("Thumbnail fetch failed (%s): %s", url, exc)
         return None

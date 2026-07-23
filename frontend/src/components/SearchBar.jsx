@@ -64,6 +64,12 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
     const [audioInstance, setAudioInstance] = useState(null);
     const [voiceError, setVoiceError] = useState(null);
     const [transcribing, setTranscribing] = useState(false);
+    // Live input level (0–1) so the user can *see* whether the mic hears them,
+    // plus which device the browser actually picked and how loud the take was.
+    const [micLevel, setMicLevel] = useState(0);
+    const [micLabel, setMicLabel] = useState('');
+    const [micMuted, setMicMuted] = useState(false);
+    const [clipInfo, setClipInfo] = useState(null);   // { durationMs, peak }
 
     const navigate = useNavigate();
     const fileInputRef = useRef(null);
@@ -71,6 +77,10 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
     const streamRef = useRef(null);
     const chunksRef = useRef([]);
     const formatRef = useRef(null);
+    const audioCtxRef = useRef(null);
+    const rafRef = useRef(null);
+    const peakRef = useRef(0);
+    const startedAtRef = useRef(0);
 
     const hasFiles = attachments.length > 0;
 
@@ -79,6 +89,50 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
     const stopStream = useCallback(() => {
         streamRef.current?.getTracks().forEach(track => track.stop());
         streamRef.current = null;
+    }, []);
+
+    /* Tear down the level meter's AudioContext / rAF loop. Safe to call twice. */
+    const stopMeter = useCallback(() => {
+        if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+        if (audioCtxRef.current) {
+            audioCtxRef.current.close().catch(() => { /* already closed */ });
+            audioCtxRef.current = null;
+        }
+        setMicLevel(0);
+    }, []);
+
+    /* Tap the live stream with an AnalyserNode and publish an RMS level each
+       frame. This is the only way to tell "mic is muted / wrong device" apart
+       from "server didn't understand me" — a silent take looks identical
+       otherwise, and Opus compresses silence down to a couple of KB. */
+    const startMeter = useCallback((stream) => {
+        try {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            const ctx = new Ctx();
+            audioCtxRef.current = ctx;
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 1024;
+            ctx.createMediaStreamSource(stream).connect(analyser);
+            const buf = new Float32Array(analyser.fftSize);
+
+            const tick = () => {
+                analyser.getFloatTimeDomainData(buf);
+                let sum = 0;
+                for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+                const rms = Math.sqrt(sum / buf.length);
+                if (rms > peakRef.current) peakRef.current = rms;
+                // Real samples are arriving — whatever the track flag said, the
+                // mic is live, so retract the mute warning.
+                if (rms > 0.005) setMicMuted(false);
+                // Scale for display: normal speech sits around 0.05–0.2 RMS.
+                setMicLevel(Math.min(1, rms * 8));
+                rafRef.current = requestAnimationFrame(tick);
+            };
+            rafRef.current = requestAnimationFrame(tick);
+        } catch (err) {
+            console.warn('Level meter unavailable:', err);
+        }
     }, []);
 
     /* ── close menu on outside click ────────────────────────────── */
@@ -99,6 +153,8 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
             if (audioURL) URL.revokeObjectURL(audioURL);
             // Never leave the mic hot after the component goes away.
             streamRef.current?.getTracks().forEach(track => track.stop());
+            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+            audioCtxRef.current?.close().catch(() => { /* already closed */ });
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -152,6 +208,10 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
         setAudioBlob(null);
         setVoiceError(null);
         setTranscribing(false);
+        setClipInfo(null);
+        setMicLabel('');
+        setMicMuted(false);
+        peakRef.current = 0;
         if (audioURL) { URL.revokeObjectURL(audioURL); setAudioURL(null); }
 
         setShowVoiceModal(true);
@@ -169,8 +229,30 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
         }
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Ask for raw-ish audio: aggressive noise suppression on some
+            // Windows drivers gates quiet speech down to digital silence.
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: false,
+                    autoGainControl: true,
+                },
+            });
             streamRef.current = stream;
+
+            const track = stream.getAudioTracks()[0];
+            setMicLabel(track?.label || 'Default microphone');
+            console.info('[voice] input device:', track?.label, track?.getSettings?.());
+            // `track.muted` means the OS is delivering no samples (hardware mute
+            // switch, or the device muted in Windows sound settings). It can read
+            // true for a beat right after acquisition, so treat it as a live
+            // warning that clears itself rather than a hard error.
+            if (track) {
+                setMicMuted(track.muted);
+                track.onmute = () => { console.warn('[voice] track muted by OS'); setMicMuted(true); };
+                track.onunmute = () => { console.info('[voice] track unmuted'); setMicMuted(false); };
+            }
+            startMeter(stream);
 
             const format = pickAudioFormat();
             formatRef.current = format;
@@ -189,21 +271,41 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                 console.error('MediaRecorder error:', event.error);
                 setVoiceError('Recording failed. Please try again.');
                 setIsRecording(false);
+                stopMeter();
                 stopStream();
             };
 
             recorder.onstop = () => {
                 // Always release the mic, even when the take was empty.
+                const peak = peakRef.current;
+                const durationMs = startedAtRef.current ? Date.now() - startedAtRef.current : 0;
+                stopMeter();
                 stopStream();
 
                 // Use the recorder's actual mimeType so the Blob is labelled
                 // with the container that was really produced.
                 const type = recorder.mimeType || format?.mime || 'audio/webm';
                 const blob = new Blob(chunks, { type });
+                setClipInfo({ durationMs, peak });
+                console.info('[voice] take:', {
+                    mimeType: type, bytes: blob.size, durationMs, peakRms: peak.toFixed(4),
+                });
 
                 if (blob.size === 0) {
                     setVoiceError('No audio was captured. Check your microphone and try again.');
                     return;
+                }
+
+                // Diagnose locally instead of burning a round-trip on a clip
+                // that Whisper can only answer with "no speech detected".
+                if (durationMs > 0 && durationMs < 700) {
+                    setVoiceError('That take was under a second — hold the record button a little longer.');
+                } else if (peak < 0.01) {
+                    setVoiceError(
+                        `The microphone captured near-silence (peak ${(peak * 100).toFixed(1)}%). ` +
+                        `Check that “${track?.label || 'your mic'}” is the right input, is unmuted, ` +
+                        'and that its input volume is up in Windows sound settings.'
+                    );
                 }
 
                 const url = URL.createObjectURL(blob);
@@ -219,10 +321,12 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
             // A timeslice makes the recorder emit chunks as it goes, so a very
             // short take still yields data instead of an empty blob.
             recorder.start(250);
+            startedAtRef.current = Date.now();
             setMediaRecorder(recorder);
             setIsRecording(true);
         } catch (err) {
             console.error('Mic error:', err);
+            stopMeter();
             stopStream();
             setVoiceError(
                 err?.name === 'NotAllowedError'
@@ -297,8 +401,11 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
             return null;
         });
         setIsRecording(false);
+        setClipInfo(null);
+        setMicMuted(false);
+        stopMeter();
         stopStream();
-    }, [audioInstance, audioURL, stopStream]);
+    }, [audioInstance, audioURL, stopStream, stopMeter]);
 
     /* ── drag & drop ────────────────────────────────────────────── */
     const handleDrop = (e) => {
@@ -518,7 +625,11 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                         onBlur={() => setFocused(false)}
                         placeholder={hasFiles ? "Add words to refine your media…" : "Ask anything…"}
                         style={{
-                            flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none',
+                            // Stretch to the pill's full height so the whole
+                            // vertical band is tappable — a 22px-tall input is
+                            // a fiddly thumb target on a phone.
+                            flex: 1, minWidth: 0, alignSelf: 'stretch',
+                            background: 'transparent', border: 'none', outline: 'none',
                             color: '#fff', paddingLeft: '6px', fontSize: compact ? '14px' : '15px',
                             fontFamily: 'Inter, system-ui, sans-serif', letterSpacing: '-0.01em',
                             caretColor: 'rgba(255,255,255,0.7)',
@@ -607,24 +718,39 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                         >
                             {!audioBlob ? (
                                 <>
-                                    <div style={{ display: 'flex', gap: '8px', height: '48px', alignItems: 'center', marginBottom: '24px' }}>
-                                        {[
-                                            { delay: 0.0, h: [0.7, 1.1, 0.7] },
-                                            { delay: 0.2, h: [0.4, 0.8, 0.4] },
-                                            { delay: 0.4, h: [0.2, 0.5, 0.2] },
-                                            { delay: 0.6, h: [0.4, 0.8, 0.4] }
-                                        ].map((cfg, i) => (
-                                            <motion.div
+                                    {/* Bars are driven by the real input level, so a dead
+                                        mic is visible immediately instead of after a
+                                        failed transcription. */}
+                                    <div style={{ display: 'flex', gap: '8px', height: '48px', alignItems: 'center', marginBottom: '14px' }}>
+                                        {[0.55, 0.85, 1, 0.7].map((weight, i) => (
+                                            <div
                                                 key={i}
-                                                animate={{ scaleY: isRecording ? cfg.h : 0.1 }}
-                                                transition={{ repeat: Infinity, duration: 1.0, delay: cfg.delay, ease: 'easeInOut' }}
-                                                style={{ width: '12px', height: '100%', background: '#000', borderRadius: '999px', originY: 0.5 }}
+                                                style={{
+                                                    width: '12px', height: '100%', background: '#000', borderRadius: '999px',
+                                                    transform: `scaleY(${isRecording ? Math.max(0.1, micLevel * weight) : 0.1})`,
+                                                    transition: 'transform 80ms linear',
+                                                }}
                                             />
                                         ))}
                                     </div>
-                                    <div style={{ fontSize: '18px', fontWeight: 500, color: '#fff', marginBottom: voiceError ? '14px' : '32px', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
+                                    <div style={{ fontSize: '18px', fontWeight: 500, color: '#fff', marginBottom: isRecording ? '6px' : voiceError ? '14px' : '32px', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
                                         {voiceError ? 'Can’t record' : isRecording ? 'Listening…' : 'Connecting…'}
                                     </div>
+                                    {isRecording && (
+                                        <div style={{
+                                            fontSize: '11px',
+                                            color: micMuted
+                                                ? 'rgba(252,211,77,0.95)'
+                                                : micLevel > 0.06 ? 'rgba(134,239,172,0.9)' : 'rgba(255,255,255,0.5)',
+                                            textAlign: 'center', marginBottom: voiceError ? '14px' : '26px', lineHeight: 1.5,
+                                            maxWidth: '250px',
+                                        }}>
+                                            {micMuted
+                                                ? 'Windows is sending no audio from this mic — unmute it in Settings → System → Sound → Input (or the mute key/switch on your headset).'
+                                                : micLevel > 0.06 ? 'Hearing you' : 'No sound yet — speak up'}
+                                            {micLabel && <span style={{ display: 'block', color: 'rgba(255,255,255,0.4)' }}>{micLabel}</span>}
+                                        </div>
+                                    )}
 
                                     {voiceError && (
                                         <p style={{
@@ -700,7 +826,9 @@ export default function SearchBar({ compact = false, initialQuery = '', loading:
                                         <div style={{ flex: 1, minWidth: 0, fontSize: '14px', color: '#fff', fontWeight: 500 }}>
                                             {isPlaying ? 'Playing…' : 'Tap to play'}
                                             <span style={{ display: 'block', fontSize: '11px', color: 'rgba(255,255,255,0.55)', fontWeight: 400 }}>
-                                                {Math.max(1, Math.round(audioBlob.size / 1024))} KB recorded
+                                                {Math.max(1, Math.round(audioBlob.size / 1024))} KB
+                                                {clipInfo?.durationMs ? ` · ${(clipInfo.durationMs / 1000).toFixed(1)}s` : ''}
+                                                {clipInfo ? ` · peak ${(clipInfo.peak * 100).toFixed(0)}%` : ''}
                                             </span>
                                         </div>
                                     </div>

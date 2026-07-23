@@ -48,9 +48,9 @@ export default function LegalLayout({ title, updated, children }) {
                         borderTop: '1px solid var(--border)',
                         display: 'flex', gap: '20px', flexWrap: 'wrap',
                     }}>
-                        <Link to="/terms" style={legalLink}>Terms &amp; Conditions</Link>
-                        <Link to="/privacy" style={legalLink}>Privacy Policy</Link>
-                        <Link to="/" style={legalLink}>Back to Neuron</Link>
+                        <Link to="/terms" className="tap-target" style={legalLink}>Terms &amp; Conditions</Link>
+                        <Link to="/privacy" className="tap-target" style={legalLink}>Privacy Policy</Link>
+                        <Link to="/" className="tap-target" style={legalLink}>Back to Neuron</Link>
                     </div>
                 </motion.article>
             </main>

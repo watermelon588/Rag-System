@@ -38,7 +38,17 @@ _MAGIC_SIGNATURES: dict[str, list[bytes]] = {
     ".wav": [b"RIFF"],
     ".ogg": [b"OggS"],
     ".flac": [b"fLaC"],
+    ".avi": [b"RIFF"],
+    # Matroska/WebM share the EBML header.
+    ".webm": [b"\x1a\x45\xdf\xa3"],
+    ".mkv": [b"\x1a\x45\xdf\xa3"],
 }
+
+# ISO base-media containers (MP4 and friends) carry their marker at offset 4,
+# after the box-size field, so they need an offset-aware check rather than a
+# prefix match.
+_ISO_BMFF_EXTENSIONS = {".mp4", ".m4v", ".m4a", ".mov"}
+_ISO_BMFF_MARKER = b"ftyp"
 
 
 @dataclass(frozen=True)
@@ -58,6 +68,15 @@ def sanitize_filename(filename: str) -> str:
 
 
 def _validate_magic(extension: str, head: bytes) -> None:
+    if extension in _ISO_BMFF_EXTENSIONS:
+        # Too short to judge — the size check has already rejected empty files,
+        # and refusing a 15-byte clip on a technicality helps nobody.
+        if len(head) >= 8 and head[4:8] != _ISO_BMFF_MARKER:
+            raise UnsupportedMediaError(
+                f"File content does not match its '{extension}' extension"
+            )
+        return
+
     signatures = _MAGIC_SIGNATURES.get(extension)
     if signatures and not any(head.startswith(sig) for sig in signatures):
         raise UnsupportedMediaError(

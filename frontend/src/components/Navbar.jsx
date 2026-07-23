@@ -70,6 +70,10 @@ export default function Navbar() {
                         alignItems: 'center',
                         textDecoration: 'none',
                         transition: 'opacity 0.2s ease',
+                        // Pad the hit area out to 44px tall, then pull the
+                        // margin back so the bar's height is unchanged.
+                        padding: '9px 0',
+                        margin: '-9px 0',
                     }}
                     onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
                     onMouseLeave={e => e.currentTarget.style.opacity = '1'}
@@ -86,6 +90,7 @@ export default function Navbar() {
                             <Link
                                 key={label}
                                 to={to}
+                                className="tap-target"
                                 style={{
                                     fontSize: '13.5px',
                                     fontWeight: active ? 600 : 400,

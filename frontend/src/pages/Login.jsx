@@ -108,7 +108,7 @@ export default function Login() {
             </form>
             <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginTop: '20px', textAlign: 'center' }}>
                 No account?{' '}
-                <Link to="/register" style={{ color: 'rgba(61,139,255,0.9)', textDecoration: 'none' }}>
+                <Link to="/register" className="tap-target" style={{ color: 'rgba(61,139,255,0.9)', textDecoration: 'none' }}>
                     Create one
                 </Link>
             </p>

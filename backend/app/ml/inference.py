@@ -115,6 +115,22 @@ def transcribe_audio(audio_path: str | Path) -> str:
     return str(result.get("text", "")).strip()
 
 
+def audio_stats(audio_path: str | Path) -> tuple[float, float]:
+    """Return (duration_seconds, peak_amplitude) for a decoded clip.
+
+    Whisper answers a silent or sub-second take with an empty string, which is
+    indistinguishable from "the model didn't understand you". Probing the
+    waveform first lets the API say *why* nothing came back.
+    """
+    import numpy as np
+    import whisper
+
+    samples = whisper.load_audio(str(audio_path))  # 16 kHz mono float32
+    if samples.size == 0:
+        return 0.0, 0.0
+    return samples.size / 16000, float(np.abs(samples).max())
+
+
 # ------------------------------------------------------------------ captioning
 
 def caption_image(image_path: str | Path) -> str:

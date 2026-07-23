@@ -210,9 +210,13 @@ button {
     --blur-scale: 0.7;
   }
 
-  /* The hero aura is sized for desktop; keep it from bleeding off-canvas. */
+  /* The hero aura is sized for desktop; keep it from bleeding off-canvas.
+     Horizontal bleed is zero on phones: a decorative pseudo-element that
+     extends past its container still counts toward scrollWidth, which is
+     what was pushing the document 4px wider than the viewport. The gradient
+     fades out well before its own edge, so nothing visible is lost. */
   .heading-glow::before {
-    inset: -20px -24px;
+    inset: -20px 0;
   }
 }
 
@@ -229,6 +233,23 @@ button {
     padding-left: 16px;
     padding-right: 16px;
   }
+}
+
+/* Enlarge a small inline link's touch area without moving anything.
+   Vertical padding on an inline element overflows its line box instead of
+   growing it, and the negative horizontal margin cancels the horizontal
+   padding — so the hit area grows while the rendered layout is identical to
+   the unpadded version. Use on the small text links (footer nav, legal, auth
+   switch links) that are comfortable with a mouse but fiddly with a thumb.
+   Sized so hit areas never overlap between the footer's two stacked rows,
+   and comfortably clear of the 24px WCAG 2.5.8 (AA) minimum. */
+.tap-target {
+  /* Horizontal padding stays at 4px: the footer's "Terms · Privacy" pair is
+     separated by a single middot, and anything wider makes their hit areas
+     overlap so a tap near the separator lands on whichever is later in the
+     DOM. Vertical padding is where the real gain is anyway. */
+  padding: 12px 4px;
+  margin: 0 -4px;
 }
 
 /* Any element that must never force the page to scroll sideways. */

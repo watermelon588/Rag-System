@@ -268,7 +268,9 @@ export default function Footer() {
 
                 {/* ── Bottom bar ──────────────────────────────────────── */}
                 <div style={{
-                    display: 'flex', flexWrap: 'wrap', gap: '16px',
+                    // 28px (not 16) so the enlarged link hit areas in the two
+                    // rows stay clear of each other once this wraps on mobile.
+                    display: 'flex', flexWrap: 'wrap', gap: '28px',
                     alignItems: 'center', justifyContent: 'space-between',
                     marginTop: '56px', paddingTop: '22px',
                     borderTop: '1px solid var(--border)',
@@ -280,6 +282,7 @@ export default function Footer() {
                                 {i > 0 && ' · '}
                                 <Link
                                     to={link.to}
+                                    className="tap-target"
                                     style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
                                     onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)'; }}
                                     onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; }}
@@ -295,6 +298,7 @@ export default function Footer() {
                                 <li key={link.to}>
                                     <Link
                                         to={link.to}
+                                        className="tap-target"
                                         style={{
                                             fontSize: 'var(--text-xs)', color: 'var(--text-muted)',
                                             textDecoration: 'none',

@@ -12,6 +12,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections import defaultdict, deque
+from urllib.parse import urlparse
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -21,6 +22,24 @@ from app.core.config import get_settings
 from app.core.logging import get_logger, request_id_var
 
 logger = get_logger("app.access")
+
+
+def client_ip(request: Request) -> str:
+    """The caller's address, honouring X-Forwarded-For only behind a proxy.
+
+    ``trusted_proxy_hops`` says how many proxies sit in front of the app. We
+    count that many entries back from the *right* of X-Forwarded-For, because
+    everything to the right was appended by infrastructure we control while
+    anything further left may have been forged by the client.
+    """
+    hops = get_settings().trusted_proxy_hops
+    if hops > 0:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        chain = [part.strip() for part in forwarded.split(",") if part.strip()]
+        if chain:
+            index = max(0, len(chain) - hops)
+            return chain[index]
+    return request.client.host if request.client else "anonymous"
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
@@ -145,7 +164,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 
-        client_key = request.client.host if request.client else "anonymous"
+        client_key = client_ip(request)
         allowed, retry_after = self.limiter.allow(client_key)
         if not allowed:
             logger.warning("Rate limit exceeded for %s on %s", client_key, request.url.path)
@@ -160,6 +179,67 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 },
                 headers={"Retry-After": str(retry_after)},
             )
+        return await call_next(request)
+
+
+def _is_loopback_origin(origin: str) -> bool:
+    host = urlparse(origin).hostname or ""
+    return host in {"localhost", "127.0.0.1", "::1"}
+
+
+class CsrfOriginMiddleware(BaseHTTPMiddleware):
+    """Reject state-changing requests that come from a foreign origin.
+
+    CORS alone does not stop CSRF. A browser will happily *send* a cross-site
+    ``POST`` — it only withholds the **response** from the attacker's script.
+    For JSON that is academic (the preflight blocks it), but our multipart
+    endpoints accept exactly what a plain cross-site ``<form>`` can send, with
+    no preflight involved. And once production needs ``SameSite=None`` cookies
+    for a separate API domain, the cookie itself stops being a barrier.
+
+    So: any unsafe method carrying an ``Origin`` header must name an origin we
+    allow. Browsers always attach ``Origin`` to these requests, so a mismatch
+    is a genuine cross-site attempt. A *missing* Origin means a non-browser
+    client (curl, a mobile app, server-to-server) which is not a CSRF vector —
+    there is no ambient cookie to abuse.
+    """
+
+    SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if request.method in self.SAFE_METHODS:
+            return await call_next(request)
+
+        origin = request.headers.get("origin")
+        if origin:
+            settings = get_settings()
+            allowed = {o.rstrip("/") for o in settings.cors_origins}
+            normalized = origin.rstrip("/")
+            # Same-origin requests (the app served from the API host itself)
+            # are always legitimate.
+            same_origin = normalized == str(request.base_url).rstrip("/")
+            # In development the Vite dev server may land on any port when
+            # 5173 is taken, and it proxies /api through itself — so accept
+            # loopback origins locally rather than break `npm run dev`. This
+            # relaxation never applies in production.
+            local_dev = not settings.is_production and _is_loopback_origin(normalized)
+            if normalized not in allowed and not same_origin and not local_dev:
+                logger.warning(
+                    "Blocked cross-origin %s %s from %s",
+                    request.method,
+                    request.url.path,
+                    origin,
+                )
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "error": {
+                            "code": "cross_origin_blocked",
+                            "message": "Request origin is not allowed",
+                            "request_id": request_id_var.get(),
+                        }
+                    },
+                )
         return await call_next(request)
 
 

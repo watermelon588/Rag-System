@@ -21,8 +21,10 @@ from app.api.deps import (
     get_search_history_repo,
 )
 from app.core.config import get_settings
-from app.core.exceptions import AuthenticationError
+from app.core.exceptions import AuthenticationError, RateLimitExceededError
+from app.core.middleware import client_ip
 from app.core.security import clear_auth_cookies, set_auth_cookies
+from app.core.throttle import FailureThrottle
 from app.db.repositories import (
     ChatRepository,
     DocumentRepository,
@@ -44,6 +46,10 @@ from app.services.auth import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+_login_throttle = FailureThrottle(
+    get_settings().login_max_failures, get_settings().login_failure_window_seconds
+)
+
 AuthSvc = Annotated[AuthService, Depends(get_auth_service)]
 DocRepo = Annotated[DocumentRepository, Depends(get_document_repo)]
 ChatRepo = Annotated[ChatRepository, Depends(get_chat_repo)]
@@ -59,8 +65,26 @@ def register(body: RegisterRequest, response: Response, auth: AuthSvc) -> AuthRe
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(body: LoginRequest, response: Response, auth: AuthSvc) -> AuthResponse:
-    user, tokens = auth.login(body.email, body.password)
+def login(
+    body: LoginRequest, request: Request, response: Response, auth: AuthSvc
+) -> AuthResponse:
+    # Throttle by (caller, account) so a password-guessing run stops early
+    # without one attacker being able to lock every user out of the service.
+    throttle_key = f"{client_ip(request)}|{body.email.lower()}"
+    allowed, retry_after = _login_throttle.check(throttle_key)
+    if not allowed:
+        raise RateLimitExceededError(
+            "Too many failed sign-in attempts. Please wait before trying again.",
+            details={"retry_after_seconds": retry_after},
+        )
+
+    try:
+        user, tokens = auth.login(body.email, body.password)
+    except AuthenticationError:
+        _login_throttle.record_failure(throttle_key)
+        raise
+
+    _login_throttle.reset(throttle_key)
     set_auth_cookies(response, tokens)
     return AuthResponse(user=UserProfile.model_validate(user), tokens=tokens)
 

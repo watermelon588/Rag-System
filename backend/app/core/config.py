@@ -43,6 +43,20 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 60
     max_upload_size_mb: int = 25
     request_timeout_seconds: int = 60
+    # Behind a proxy (Vercel, Render, nginx, a load balancer) every request
+    # arrives from the proxy's IP, so per-client rate limiting would lump all
+    # users into one bucket. Set this to the number of proxies in front of the
+    # app and the limiter reads the corresponding hop of X-Forwarded-For
+    # instead. Leave at 0 when the app is directly exposed — trusting the
+    # header without a proxy in front lets a client forge any IP it likes.
+    trusted_proxy_hops: int = 0
+
+    # ------------------------------------------------------- login throttling
+    # Failed logins are counted per (client IP + email). Exceeding the limit
+    # locks that pair out for the cooldown, which blunts credential stuffing
+    # without the global limiter having to be set aggressively low.
+    login_max_failures: int = 8
+    login_failure_window_seconds: int = 900     # 15 minutes
 
     # ----------------------------------------------------------------- auth
     secret_key: str = "change-me-in-production"

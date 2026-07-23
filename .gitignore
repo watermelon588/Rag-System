@@ -5,3 +5,13 @@
 # Local editor state (the shared settings.json is intentionally committed)
 .vscode/*
 !.vscode/settings.json
+
+# Dev-server output. Runtime logs record request paths, IPs and error detail,
+# none of which belongs in version control or a deployment.
+*.log
+
+# Files no longer referenced by the app, moved here instead of deleted:
+# unused logo variants, scaffold leftovers, superseded mockups, old public
+# images. Kept on disk only — every one of them is still recoverable from git
+# history if it turns out to be needed.
+/_archive/
